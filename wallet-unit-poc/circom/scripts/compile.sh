@@ -1,8 +1,9 @@
 #!/bin/bash
 
 usage() {
-  echo "Usage: $0 {jwt_rs256|all}"
+  echo "Usage: $0 {jwt_rs256|rs256|all}"
   echo "  jwt_rs256: Compile files for JWT-RS256."
+  echo "  rs256: Compile files for RS256."
   echo "  all: Compile all circuits."
   exit 1
 }
@@ -22,6 +23,15 @@ case "$1" in
     [ ! -f build/cpp/jwt_rs256.cpp ] && cp build/jwt_rs256/jwt_rs256_cpp/jwt_rs256.cpp build/cpp/ || true
     [ ! -f build/cpp/jwt_rs256.dat ] && cp build/jwt_rs256/jwt_rs256_cpp/jwt_rs256.dat build/cpp/ || true
     echo "JWT-RS256 file processing complete."
+    ;;
+  rs256)
+    echo "Compiling RS256 circuit..."
+    mkdir -p build/cpp || { echo "Error: Failed to create cpp directory."; exit 1; }
+    npx circomkit compile rs256 || { echo "Error: Failed to compile RS256."; exit 1; }
+    cd build/rs256/ && mv rs256.r1cs rs256_js/ && cd ../.. || { echo "Error: Failed to process RS256."; exit 1; }
+    [ ! -f build/cpp/rs256.cpp ] && cp build/rs256/rs256_cpp/rs256.cpp build/cpp/ || true
+    [ ! -f build/cpp/rs256.dat ] && cp build/rs256/rs256_cpp/rs256.dat build/cpp/ || true
+    echo "RS256 circuit compiled successfully."
     ;;
   all)
     echo "Compiling all circuits..."

@@ -131,11 +131,11 @@ impl PathConfig {
 
 // Key file name constants
 pub mod keys {
-    pub const JWT_RS256_PROVING_KEY: &str = "jwt_rs256_proving.key";
-    pub const JWT_RS256_VERIFYING_KEY: &str = "jwt_rs256_verifying.key";
-    pub const JWT_RS256_PROOF: &str = "jwt_rs256_proof.bin";
-    pub const JWT_RS256_WITNESS: &str = "jwt_rs256_witness.bin";
-    pub const JWT_RS256_INSTANCE: &str = "jwt_rs256_instance.bin";
+    pub const RS256_PROVING_KEY: &str = "rs256_proving.key";
+    pub const RS256_VERIFYING_KEY: &str = "rs256_verifying.key";
+    pub const RS256_PROOF: &str = "rs256_proof.bin";
+    pub const RS256_WITNESS: &str = "rs256_witness.bin";
+    pub const RS256_INSTANCE: &str = "rs256_instance.bin";
 }
 
 #[cfg(test)]

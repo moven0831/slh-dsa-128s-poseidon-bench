@@ -37,14 +37,14 @@ fn main() {
         }
     }
 
-    // Stage only jwt_rs256 circuit files so build_and_link doesn't try to
+    // Stage only rs256 circuit files so build_and_link doesn't try to
     // compile ES256 circuits (jwt.cpp/show.cpp) that may not exist in CI.
     let staging_dir = Path::new(&out_dir).join("circuit_staging");
     std::fs::create_dir_all(&staging_dir).expect("Failed to create staging directory");
 
     for ext in &["cpp", "dat"] {
-        let src = circuits_dir.join(format!("jwt_rs256.{}", ext));
-        let dst = staging_dir.join(format!("jwt_rs256.{}", ext));
+        let src = circuits_dir.join(format!("rs256.{}", ext));
+        let dst = staging_dir.join(format!("rs256.{}", ext));
         if src.exists() {
             std::fs::copy(&src, &dst).unwrap_or_else(|e| {
                 panic!(
@@ -56,7 +56,7 @@ fn main() {
             });
         } else {
             panic!(
-                "Required circuit file not found: {}. Run `yarn compile:jwt_rs256` in the circom directory first.",
+                "Required circuit file not found: {}. Run `yarn compile:rs256` in the circom directory first.",
                 src.display()
             );
         }

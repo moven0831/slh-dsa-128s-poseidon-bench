@@ -4,5 +4,11 @@
     "template": "JWTRS256",
     "params": [1920, 1900, 4, 50, 128, 121, 17],
     "pubs": ["rsaModulus"]
+  },
+  "rs256": {
+    "file": "rs256",
+    "template": "CertRSA256Verify",
+    "params": [1536, 121, 17],
+    "pubs": ["rsaModulus"]
   }
 }

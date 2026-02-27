@@ -1,20 +1,20 @@
-//! CLI for running the Spartan-2 JWT-RS256 circuit.
+//! CLI for running the Spartan-2 RS256 circuit.
 //!
 //! Usage examples:
-//!   cargo run --release -- jwt_rs256 setup --input ../circom/inputs/jwt_rs256/default.json
-//!   cargo run --release -- jwt_rs256 prove --input ../circom/inputs/jwt_rs256/default.json
-//!   cargo run --release -- jwt_rs256 verify
-//!   cargo run --release -- jwt_rs256 benchmark
+//!   cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
+//!   cargo run --release -- rs256 generate-input ./response.json
+//!   cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
+//!   cargo run --release -- rs256 verify
+//!   cargo run --release -- rs256 benchmark
 
 use ecdsa_spartan2::{
+    circuits::rs256_circuit::Rs256Circuit,
     load_proof,
     paths::keys::{
-        JWT_RS256_INSTANCE, JWT_RS256_PROOF, JWT_RS256_PROVING_KEY, JWT_RS256_VERIFYING_KEY,
-        JWT_RS256_WITNESS,
+        RS256_INSTANCE, RS256_PROOF, RS256_PROVING_KEY, RS256_VERIFYING_KEY, RS256_WITNESS,
     },
     prove_circuit, prove_circuit_with_pk, run_circuit, save_keys, setup_circuit_keys,
-    setup_circuit_keys_no_save, verify_circuit, verify_circuit_with_loaded_data, JwtRs256Circuit,
-    PathConfig,
+    setup_circuit_keys_no_save, verify_circuit, verify_circuit_with_loaded_data, PathConfig,
 };
 use std::{env::args, fs, path::PathBuf, process, time::Instant};
 use tracing::info;
@@ -66,6 +66,17 @@ fn main() {
     let args: Vec<String> = args().collect();
     let command_args: &[String] = if args.len() > 1 { &args[1..] } else { &[] };
 
+    if command_args.contains(&"generate-input".to_string()) {
+        // Expect "generate-input" <response.json path> as args
+        if command_args.len() < 2 {
+            eprintln!("Usage: {} generate-input <response.json path>", args[0]);
+            process::exit(1);
+        }
+        let response_path = PathBuf::from(&command_args[2]);
+        Rs256Circuit::generate_input_from_response(&response_path);
+        process::exit(0);
+    }
+
     let command = match parse_command(command_args) {
         Ok(cmd) => cmd,
         Err(err) => {
@@ -75,63 +86,63 @@ fn main() {
         }
     };
 
-    execute_jwt_rs256(command.action, command.options);
+    execute_rs256(command.action, command.options);
 }
 
-/// Execute JWT RS256 circuit commands (single-stage, no device binding)
-fn execute_jwt_rs256(action: CircuitAction, options: CommandOptions) {
+/// Execute RS256 circuit commands (single-stage, no device binding)
+fn execute_rs256(action: CircuitAction, options: CommandOptions) {
     let path_config = PathConfig::development();
 
     match action {
         CircuitAction::Setup => {
-            info!(input = ?options.input, "Setting up Spartan-2 keys for the JWT-RS256 circuit");
-            let circuit = JwtRs256Circuit::new(path_config.clone(), options.input.clone());
+            info!(input = ?options.input, "Setting up Spartan-2 keys for the RS256 circuit");
+            let circuit = Rs256Circuit::new(path_config.clone(), options.input.clone());
             setup_circuit_keys(
                 circuit,
-                path_config.key_path(JWT_RS256_PROVING_KEY),
-                path_config.key_path(JWT_RS256_VERIFYING_KEY),
+                path_config.key_path(RS256_PROVING_KEY),
+                path_config.key_path(RS256_VERIFYING_KEY),
             );
         }
         CircuitAction::Run => {
-            let circuit = JwtRs256Circuit::new(path_config, options.input.clone());
-            info!("Running JWT-RS256 circuit with ZK-Spartan");
+            let circuit = Rs256Circuit::new(path_config, options.input.clone());
+            info!("Running RS256 circuit with ZK-Spartan");
             run_circuit(circuit);
         }
         CircuitAction::Prove => {
-            let circuit = JwtRs256Circuit::new(path_config.clone(), options.input.clone());
-            info!("Proving JWT-RS256 circuit with ZK-Spartan");
+            let circuit = Rs256Circuit::new(path_config.clone(), options.input.clone());
+            info!("Proving RS256 circuit with ZK-Spartan");
             prove_circuit(
                 circuit,
-                path_config.key_path(JWT_RS256_PROVING_KEY),
-                path_config.artifact_path(JWT_RS256_INSTANCE),
-                path_config.artifact_path(JWT_RS256_WITNESS),
-                path_config.artifact_path(JWT_RS256_PROOF),
+                path_config.key_path(RS256_PROVING_KEY),
+                path_config.artifact_path(RS256_INSTANCE),
+                path_config.artifact_path(RS256_WITNESS),
+                path_config.artifact_path(RS256_PROOF),
             );
         }
         CircuitAction::Verify => {
-            info!("Verifying JWT-RS256 proof with ZK-Spartan");
+            info!("Verifying RS256 proof with ZK-Spartan");
             verify_circuit(
-                path_config.artifact_path(JWT_RS256_PROOF),
-                path_config.key_path(JWT_RS256_VERIFYING_KEY),
+                path_config.artifact_path(RS256_PROOF),
+                path_config.key_path(RS256_VERIFYING_KEY),
             );
         }
         CircuitAction::Benchmark => {
-            info!("Running JWT-RS256 benchmark pipeline...");
-            run_jwt_rs256_benchmark(options.input);
+            info!("RS256 benchmark pipeline...");
+            run_rs256_benchmark(options.input);
         }
     }
 }
 
-/// Run benchmark for JWT-RS256 single-stage circuit
-fn run_jwt_rs256_benchmark(input_path: Option<PathBuf>) {
+/// Run benchmark for RS256 single-stage circuit
+fn run_rs256_benchmark(input_path: Option<PathBuf>) {
     let path_config = PathConfig::development();
 
     println!("\n╔════════════════════════════════════════════════╗");
-    println!("║   JWT-RS256 SINGLE-STAGE BENCHMARK PIPELINE    ║");
+    println!("║      RS256 SINGLE-STAGE BENCHMARK PIPELINE     ║");
     println!("╚════════════════════════════════════════════════╝\n");
 
     // Step 0: Pre-generate witness while memory is clean
-    let circuit = JwtRs256Circuit::new(path_config.clone(), input_path.clone());
+    let circuit = Rs256Circuit::new(path_config.clone(), input_path.clone());
     info!("Pre-generating witness (before setup allocates keys)...");
     let t_witness = Instant::now();
     circuit
@@ -140,7 +151,7 @@ fn run_jwt_rs256_benchmark(input_path: Option<PathBuf>) {
     let witness_gen_ms = t_witness.elapsed().as_millis();
     println!("✓ Witness cached: {} ms\n", witness_gen_ms);
 
-    info!("Step 1/3: Setting up JWT-RS256 circuit...");
+    info!("Step 1/3: Setting up RS256 circuit...");
     let t0 = Instant::now();
     let (pk, vk) = setup_circuit_keys_no_save(circuit.clone());
     let setup_ms = t0.elapsed().as_millis();
@@ -148,72 +159,68 @@ fn run_jwt_rs256_benchmark(input_path: Option<PathBuf>) {
 
     // Save keys
     if let Err(e) = save_keys(
-        path_config.key_path(JWT_RS256_PROVING_KEY),
-        path_config.key_path(JWT_RS256_VERIFYING_KEY),
+        path_config.key_path(RS256_PROVING_KEY),
+        path_config.key_path(RS256_VERIFYING_KEY),
         &pk,
         &vk,
     ) {
-        eprintln!("Failed to save JWT-RS256 keys: {}", e);
+        eprintln!("Failed to save RS256 keys: {}", e);
         std::process::exit(1);
     }
 
     // Step 2: Prove
-    info!("Step 2/3: Proving JWT-RS256 circuit...");
+    info!("Step 2/3: Proving RS256 circuit...");
     let t0 = Instant::now();
     prove_circuit_with_pk(
         circuit,
         &pk,
-        path_config.artifact_path(JWT_RS256_INSTANCE),
-        path_config.artifact_path(JWT_RS256_WITNESS),
-        path_config.artifact_path(JWT_RS256_PROOF),
+        path_config.artifact_path(RS256_INSTANCE),
+        path_config.artifact_path(RS256_WITNESS),
+        path_config.artifact_path(RS256_PROOF),
     );
     let prove_ms = t0.elapsed().as_millis();
     println!("✓ Proof generated: {} ms\n", prove_ms);
 
     // Step 3: Verify
-    info!("Step 3/3: Verifying JWT-RS256 proof...");
-    let proof = load_proof(path_config.artifact_path(JWT_RS256_PROOF)).expect("load proof failed");
+    info!("Step 3/3: Verifying RS256 proof...");
+    let proof = load_proof(path_config.artifact_path(RS256_PROOF)).expect("load proof failed");
     let t0 = Instant::now();
     verify_circuit_with_loaded_data(&proof, &vk);
     let verify_ms = t0.elapsed().as_millis();
     println!("✓ Proof verified: {} ms\n", verify_ms);
 
     // Measure sizes
-    let pk_bytes = get_file_size(&path_config.key_path(JWT_RS256_PROVING_KEY).to_string_lossy());
-    let vk_bytes = get_file_size(&path_config.key_path(JWT_RS256_VERIFYING_KEY).to_string_lossy());
-    let proof_bytes = get_file_size(&path_config.artifact_path(JWT_RS256_PROOF).to_string_lossy());
-    let witness_bytes =
-        get_file_size(&path_config.artifact_path(JWT_RS256_WITNESS).to_string_lossy());
+    let pk_bytes = get_file_size(&path_config.key_path(RS256_PROVING_KEY).to_string_lossy());
+    let vk_bytes = get_file_size(&path_config.key_path(RS256_VERIFYING_KEY).to_string_lossy());
+    let proof_bytes = get_file_size(&path_config.artifact_path(RS256_PROOF).to_string_lossy());
+    let witness_bytes = get_file_size(&path_config.artifact_path(RS256_WITNESS).to_string_lossy());
 
     println!("\n╔════════════════════════════════════════════════╗");
-    println!("║      JWT-RS256 BENCHMARK RESULTS               ║");
+    println!("║         RS256 BENCHMARK RESULTS                ║");
     println!("╠════════════════════════════════════════════════╣");
     println!("║ TIMING                                         ║");
     println!("╠════════════════════════════════════════════════╣");
-    println!(
-        "║ Witness Gen:            {:>10} ms      ║",
-        witness_gen_ms
-    );
-    println!("║ Setup:                  {:>10} ms      ║", setup_ms);
-    println!("║ Prove:                  {:>10} ms      ║", prove_ms);
-    println!("║ Verify:                 {:>10} ms      ║", verify_ms);
+    println!("║ Witness Gen:              {:>10} ms        ║", witness_gen_ms);
+    println!("║ Setup:                    {:>10} ms        ║", setup_ms);
+    println!("║ Prove:                    {:>10} ms        ║", prove_ms);
+    println!("║ Verify:                   {:>10} ms        ║", verify_ms);
     println!("╠════════════════════════════════════════════════╣");
     println!("║ SIZES                                          ║");
     println!("╠════════════════════════════════════════════════╣");
     println!(
-        "║ Proving Key:           {:>12}       ║",
+        "║ Proving Key:               {:>12}        ║",
         format_size(pk_bytes)
     );
     println!(
-        "║ Verifying Key:         {:>12}       ║",
+        "║ Verifying Key:             {:>12}        ║",
         format_size(vk_bytes)
     );
     println!(
-        "║ Proof:                 {:>12}       ║",
+        "║ Proof:                     {:>12}        ║",
         format_size(proof_bytes)
     );
     println!(
-        "║ Witness:               {:>12}       ║",
+        "║ Witness:                   {:>12}        ║",
         format_size(witness_bytes)
     );
     println!("╚════════════════════════════════════════════════╝\n");
@@ -229,7 +236,7 @@ fn parse_command(args: &[String]) -> Result<ParsedCommand, String> {
             print_usage();
             process::exit(0);
         }
-        "jwt_rs256" => parse_circuit_command(&args[1..]),
+        "rs256" => parse_circuit_command(&args[1..]),
         other => Err(format!("Unknown command '{other}'")),
     }
 }
@@ -259,9 +266,10 @@ fn parse_circuit_command(tail: &[String]) -> Result<ParsedCommand, String> {
 
     let options_slice = &tail[option_start..];
     let options = match action {
-        CircuitAction::Run | CircuitAction::Prove | CircuitAction::Setup | CircuitAction::Benchmark => {
-            parse_options(options_slice)?
-        }
+        CircuitAction::Run
+        | CircuitAction::Prove
+        | CircuitAction::Setup
+        | CircuitAction::Benchmark => parse_options(options_slice)?,
         CircuitAction::Verify => ensure_no_options(options_slice)?,
     };
 
@@ -308,11 +316,12 @@ fn parse_options(args: &[String]) -> Result<CommandOptions, String> {
 fn print_usage() {
     eprintln!(
         "Usage:
-  ecdsa-spartan2 jwt_rs256 <action> [options]
+  ecdsa-spartan2 rs256 <action> [options]
 
 Actions:
   run                  Run the complete circuit (setup, prove, verify)
   setup                Generate proving and verifying keys
+  generate-input       Generate circuit input from response.json
   prove                Generate proof
   verify               Verify proof
   benchmark            Run complete benchmark pipeline
@@ -321,9 +330,10 @@ Options:
   --input, -i <path>   Override the circuit input JSON (run/prove/setup/benchmark)
 
 Examples:
-  cargo run --release -- jwt_rs256 setup --input ../circom/inputs/jwt_rs256/default.json
-  cargo run --release -- jwt_rs256 prove --input ../circom/inputs/jwt_rs256/default.json
-  cargo run --release -- jwt_rs256 verify
-  cargo run --release -- jwt_rs256 benchmark --input ../circom/inputs/jwt_rs256/default.json"
+  cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
+  cargo run --release -- rs256 generate-input ./circuits/response.json
+  cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
+  cargo run --release -- rs256 verify
+  cargo run --release -- rs256 benchmark --input ../circom/inputs/rs256/input.json"
     );
 }
