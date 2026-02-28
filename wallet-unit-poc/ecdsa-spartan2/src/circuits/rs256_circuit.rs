@@ -58,10 +58,14 @@ struct CardSignResponse {
     #[serde(rename = "cardSN")]
     card_sn: String,
     certb64: String,
+    #[serde(rename = "func")]
     _func: String,
+    #[serde(rename = "last_error")]
     _last_error: i32,
+    #[serde(rename = "ret_code")]
     _ret_code: i32,
     signature: String,
+    #[serde(rename = "version")]
     _version: String,
 }
 
@@ -121,7 +125,6 @@ impl Rs256Circuit {
         let rsa_pub = RsaPublicKey::from_public_key_der(&spki_der)?;
 
         println!("RSA key size: {} bits", rsa_pub.n().bits());
-        println!("Subject: {:?}", cert.tbs_certificate.subject);
 
         // 3. Decode signature
         let sig_bytes = base64::engine::general_purpose::STANDARD.decode(&response.signature)?;
@@ -135,7 +138,7 @@ impl Rs256Circuit {
         Ok(())
     }
 
-    pub fn generate_input_from_response(response_path: &PathBuf) {
+    pub fn generate_input_from_response(response_path: &PathBuf, tbs: &[u8]) {
         let response_string = std::fs::read_to_string(response_path).unwrap();
         let response: CardSignResponse = serde_json::from_str(&response_string).unwrap();
 
@@ -146,30 +149,30 @@ impl Rs256Circuit {
 
         // Parse DER certificate
         let cert = Certificate::from_der(&raw_bytes).expect("Failed to parse certificate");
-        let tbs = &cert.tbs_certificate;
+        let cert_tbs = &cert.tbs_certificate;
 
         // === Subject (who the cert is issued to) ===
-        let subject_cn = Self::get_attr(&tbs.subject, COMMON_NAME); // CN
-        let subject_org = Self::get_attr(&tbs.subject, ORGANIZATION_NAME); // O
-        let subject_country = Self::get_attr(&tbs.subject, COUNTRY_NAME); // C
-        let subject_serial = Self::get_attr(&tbs.subject, SERIAL_NUMBER); // serialNumber
+        let subject_cn = Self::get_attr(&cert_tbs.subject, COMMON_NAME); // CN
+        let subject_org = Self::get_attr(&cert_tbs.subject, ORGANIZATION_NAME); // O
+        let subject_country = Self::get_attr(&cert_tbs.subject, COUNTRY_NAME); // C
+        let subject_serial = Self::get_attr(&cert_tbs.subject, SERIAL_NUMBER); // serialNumber
 
         // === Issuer (who issued the cert) ===
-        let issuer_cn = Self::get_attr(&tbs.issuer, COMMON_NAME);
-        let issuer_org = Self::get_attr(&tbs.issuer, ORGANIZATION_NAME);
-        let issuer_ou = Self::get_attr(&tbs.issuer, ORGANIZATIONAL_UNIT_NAME); // OU
-        let issuer_country = Self::get_attr(&tbs.issuer, COUNTRY_NAME);
+        let issuer_cn = Self::get_attr(&cert_tbs.issuer, COMMON_NAME);
+        let issuer_org = Self::get_attr(&cert_tbs.issuer, ORGANIZATION_NAME);
+        let issuer_ou = Self::get_attr(&cert_tbs.issuer, ORGANIZATIONAL_UNIT_NAME); // OU
+        let issuer_country = Self::get_attr(&cert_tbs.issuer, COUNTRY_NAME);
 
         // === Validity ===
-        let not_before = tbs.validity.not_before;
-        let not_after = tbs.validity.not_after;
+        let not_before = cert_tbs.validity.not_before;
+        let not_after = cert_tbs.validity.not_after;
 
         // === Serial Number ===
-        let serial = tbs.serial_number.as_bytes();
+        let serial = cert_tbs.serial_number.as_bytes();
         let serial_hex = hex::encode(serial);
 
         // === Version ===
-        let version = tbs.version; // v1, v2, or v3
+        let version = cert_tbs.version; // v1, v2, or v3
 
         // === Signature Algorithm ===
         let sig_alg_oid = cert.signature_algorithm.oid.to_string();
@@ -182,18 +185,18 @@ impl Rs256Circuit {
         };
 
         // === Public Key Info ===
-        let _pub_key_alg = tbs.subject_public_key_info.algorithm.oid.to_string();
-        let pub_key_bytes = tbs.subject_public_key_info.subject_public_key.raw_bytes();
+        let _pub_key_alg = cert_tbs.subject_public_key_info.algorithm.oid.to_string();
+        let pub_key_bytes = cert_tbs.subject_public_key_info.subject_public_key.raw_bytes();
         let pub_key_bit_len = pub_key_bytes.len() * 8;
 
         // === Signature ===
         let signature_bytes = cert.signature.raw_bytes();
 
         // === TBS (To-Be-Signed) raw bytes ===
-        let tbs_der = tbs.to_der().unwrap();
+        let tbs_der = cert_tbs.to_der().unwrap();
 
         // === Extensions (v3) ===
-        if let Some(extensions) = &tbs.extensions {
+        if let Some(extensions) = &cert_tbs.extensions {
             for ext in extensions.iter() {
                 let oid = ext.extn_id.to_string();
                 let _critical = ext.critical;
@@ -252,10 +255,6 @@ impl Rs256Circuit {
 
         let json_str = std::fs::read_to_string("./src/circuits/response.json").unwrap();
         let response: CardSignResponse = serde_json::from_str(&json_str).unwrap();
-
-        // The original data that was signed
-        // This depends on your application - it could be a hash, a message, etc.
-        let tbs = b"123456";
 
         // Verify signature first
         match Self::verify_card_signature(&response, tbs) {

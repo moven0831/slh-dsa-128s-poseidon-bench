@@ -1,8 +1,8 @@
 //! CLI for running the Spartan-2 RS256 circuit.
 //!
 //! Usage examples:
+//!   cargo run --release -- rs256 generate-input ./response.json 123456 # optional
 //!   cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
-//!   cargo run --release -- rs256 generate-input ./response.json
 //!   cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
 //!   cargo run --release -- rs256 verify
 //!   cargo run --release -- rs256 benchmark
@@ -68,12 +68,13 @@ fn main() {
 
     if command_args.contains(&"generate-input".to_string()) {
         // Expect "generate-input" <response.json path> as args
-        if command_args.len() < 2 {
-            eprintln!("Usage: {} generate-input <response.json path>", args[0]);
+        if command_args.len() < 4 {
+            eprintln!("Usage: {} generate-input <response.json path> <tbs string>", args[0]);
             process::exit(1);
         }
         let response_path = PathBuf::from(&command_args[2]);
-        Rs256Circuit::generate_input_from_response(&response_path);
+        let tbs = command_args[3].as_bytes();
+        Rs256Circuit::generate_input_from_response(&response_path, tbs);
         process::exit(0);
     }
 
@@ -321,7 +322,7 @@ fn print_usage() {
 Actions:
   run                  Run the complete circuit (setup, prove, verify)
   setup                Generate proving and verifying keys
-  generate-input       Generate circuit input from response.json
+  generate-input       Generate circuit input from response.json and tbs
   prove                Generate proof
   verify               Verify proof
   benchmark            Run complete benchmark pipeline
@@ -330,8 +331,8 @@ Options:
   --input, -i <path>   Override the circuit input JSON (run/prove/setup/benchmark)
 
 Examples:
+  cargo run --release -- rs256 generate-input ./circuits/response.json 123456 # optional
   cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
-  cargo run --release -- rs256 generate-input ./circuits/response.json
   cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
   cargo run --release -- rs256 verify
   cargo run --release -- rs256 benchmark --input ../circom/inputs/rs256/input.json"
