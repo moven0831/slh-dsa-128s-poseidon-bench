@@ -1,13 +1,12 @@
 use ecdsa_spartan2::{
     load_proof,
     paths::keys::{
-        JWT_RS256_INSTANCE, JWT_RS256_PROOF, JWT_RS256_PROVING_KEY, JWT_RS256_VERIFYING_KEY,
-        JWT_RS256_WITNESS,
+        RS256_INSTANCE, RS256_PROOF, RS256_PROVING_KEY, RS256_VERIFYING_KEY, RS256_WITNESS,
     },
     prover::{prove_circuit, prove_circuit_with_pk, verify_circuit, verify_circuit_with_loaded_data},
     save_keys,
     setup::{setup_circuit_keys, setup_circuit_keys_no_save},
-    JwtRs256Circuit, PathConfig,
+    Rs256Circuit, PathConfig,
 };
 use std::path::PathBuf;
 
@@ -113,26 +112,26 @@ fn get_file_size(path: impl AsRef<std::path::Path>) -> Result<u64, ZkProofError>
 // Setup Operation
 // ============================================================================
 
-/// Setup JWT-RS256 circuit keys
-/// Generates proving and verifying keys for the jwt_rs256 circuit
+/// Setup RS256 circuit keys
+/// Generates proving and verifying keys for the rs256 circuit
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn setup_keys(
     documents_path: String,
     input_path: Option<String>,
 ) -> Result<String, ZkProofError> {
     let config = make_config(&documents_path);
-    let circuit = JwtRs256Circuit::new(config.clone(), input_path.map(PathBuf::from));
+    let circuit = Rs256Circuit::new(config.clone(), input_path.map(PathBuf::from));
 
     let start = std::time::Instant::now();
     setup_circuit_keys(
         circuit,
-        config.key_path(JWT_RS256_PROVING_KEY),
-        config.key_path(JWT_RS256_VERIFYING_KEY),
+        config.key_path(RS256_PROVING_KEY),
+        config.key_path(RS256_VERIFYING_KEY),
     );
     let elapsed_ms = start.elapsed().as_millis();
 
     Ok(format!(
-        "JWT-RS256 circuit keys setup completed in {}ms",
+        "RS256 circuit keys setup completed in {}ms",
         elapsed_ms
     ))
 }
@@ -141,7 +140,7 @@ pub fn setup_keys(
 // Prove Operation
 // ============================================================================
 
-/// Generate JWT-RS256 circuit proof
+/// Generate RS256 circuit proof
 /// Runs proving using existing keys
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn prove(
@@ -149,19 +148,19 @@ pub fn prove(
     input_path: Option<String>,
 ) -> Result<ProofResult, ZkProofError> {
     let config = make_config(&documents_path);
-    let circuit = JwtRs256Circuit::new(config.clone(), input_path.map(PathBuf::from));
+    let circuit = Rs256Circuit::new(config.clone(), input_path.map(PathBuf::from));
 
     let start = std::time::Instant::now();
     prove_circuit(
         circuit,
-        config.key_path(JWT_RS256_PROVING_KEY),
-        config.artifact_path(JWT_RS256_INSTANCE),
-        config.artifact_path(JWT_RS256_WITNESS),
-        config.artifact_path(JWT_RS256_PROOF),
+        config.key_path(RS256_PROVING_KEY),
+        config.artifact_path(RS256_INSTANCE),
+        config.artifact_path(RS256_WITNESS),
+        config.artifact_path(RS256_PROOF),
     );
     let prove_ms = start.elapsed().as_millis() as u64;
 
-    let proof_size_bytes = get_file_size(&config.artifact_path(JWT_RS256_PROOF))?;
+    let proof_size_bytes = get_file_size(&config.artifact_path(RS256_PROOF))?;
 
     Ok(ProofResult {
         prove_ms,
@@ -173,14 +172,14 @@ pub fn prove(
 // Verify Operation
 // ============================================================================
 
-/// Verify JWT-RS256 circuit proof
+/// Verify RS256 circuit proof
 /// Verifies the proof using the verifying key
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn verify(documents_path: String) -> Result<bool, ZkProofError> {
     let config = make_config(&documents_path);
     verify_circuit(
-        config.artifact_path(JWT_RS256_PROOF),
-        config.key_path(JWT_RS256_VERIFYING_KEY),
+        config.artifact_path(RS256_PROOF),
+        config.key_path(RS256_VERIFYING_KEY),
     );
     Ok(true)
 }
@@ -189,7 +188,7 @@ pub fn verify(documents_path: String) -> Result<bool, ZkProofError> {
 // Benchmark Operation
 // ============================================================================
 
-/// Run complete benchmark pipeline for JWT-RS256 circuit
+/// Run complete benchmark pipeline for RS256 circuit
 /// Executes setup, prove, and verify with timing and size metrics
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn run_complete_benchmark(
@@ -199,14 +198,14 @@ pub fn run_complete_benchmark(
     let config = make_config(&documents_path);
 
     // Step 1: Setup
-    let circuit = JwtRs256Circuit::new(config.clone(), input_path.as_ref().map(PathBuf::from));
+    let circuit = Rs256Circuit::new(config.clone(), input_path.as_ref().map(PathBuf::from));
     let start = std::time::Instant::now();
     let (pk, vk) = setup_circuit_keys_no_save(circuit);
     let setup_ms = start.elapsed().as_millis() as u64;
 
     save_keys(
-        config.key_path(JWT_RS256_PROVING_KEY),
-        config.key_path(JWT_RS256_VERIFYING_KEY),
+        config.key_path(RS256_PROVING_KEY),
+        config.key_path(RS256_VERIFYING_KEY),
         &pk,
         &vk,
     )
@@ -215,19 +214,19 @@ pub fn run_complete_benchmark(
     })?;
 
     // Step 2: Prove
-    let circuit = JwtRs256Circuit::new(config.clone(), input_path.as_ref().map(PathBuf::from));
+    let circuit = Rs256Circuit::new(config.clone(), input_path.as_ref().map(PathBuf::from));
     let start = std::time::Instant::now();
     prove_circuit_with_pk(
         circuit,
         &pk,
-        config.artifact_path(JWT_RS256_INSTANCE),
-        config.artifact_path(JWT_RS256_WITNESS),
-        config.artifact_path(JWT_RS256_PROOF),
+        config.artifact_path(RS256_INSTANCE),
+        config.artifact_path(RS256_WITNESS),
+        config.artifact_path(RS256_PROOF),
     );
     let prove_ms = start.elapsed().as_millis() as u64;
 
     // Step 3: Verify
-    let proof = load_proof(config.artifact_path(JWT_RS256_PROOF)).map_err(|e| {
+    let proof = load_proof(config.artifact_path(RS256_PROOF)).map_err(|e| {
         ZkProofError::FileNotFound {
             message: format!("Failed to load proof: {}", e),
         }
@@ -238,10 +237,10 @@ pub fn run_complete_benchmark(
     let verify_ms = start.elapsed().as_millis() as u64;
 
     // Measure file sizes
-    let proving_key_bytes = get_file_size(&config.key_path(JWT_RS256_PROVING_KEY))?;
-    let verifying_key_bytes = get_file_size(&config.key_path(JWT_RS256_VERIFYING_KEY))?;
-    let proof_bytes = get_file_size(&config.artifact_path(JWT_RS256_PROOF))?;
-    let witness_bytes = get_file_size(&config.artifact_path(JWT_RS256_WITNESS))?;
+    let proving_key_bytes = get_file_size(&config.key_path(RS256_PROVING_KEY))?;
+    let verifying_key_bytes = get_file_size(&config.key_path(RS256_VERIFYING_KEY))?;
+    let proof_bytes = get_file_size(&config.artifact_path(RS256_PROOF))?;
+    let witness_bytes = get_file_size(&config.artifact_path(RS256_WITNESS))?;
 
     Ok(BenchmarkResults {
         setup_ms,
@@ -281,24 +280,24 @@ mod tests {
     fn test_path_config_mobile_rs256() {
         let config = make_config("/app/Documents");
         assert_eq!(
-            config.key_path(JWT_RS256_PROVING_KEY),
-            PathBuf::from("/app/Documents/keys/jwt_rs256_proving.key")
+            config.key_path(RS256_PROVING_KEY),
+            PathBuf::from("/app/Documents/keys/rs256_proving.key")
         );
         assert_eq!(
-            config.key_path(JWT_RS256_VERIFYING_KEY),
-            PathBuf::from("/app/Documents/keys/jwt_rs256_verifying.key")
+            config.key_path(RS256_VERIFYING_KEY),
+            PathBuf::from("/app/Documents/keys/rs256_verifying.key")
         );
         assert_eq!(
-            config.artifact_path(JWT_RS256_PROOF),
-            PathBuf::from("/app/Documents/keys/jwt_rs256_proof.bin")
+            config.artifact_path(RS256_PROOF),
+            PathBuf::from("/app/Documents/keys/rs256_proof.bin")
         );
         assert_eq!(
-            config.artifact_path(JWT_RS256_WITNESS),
-            PathBuf::from("/app/Documents/keys/jwt_rs256_witness.bin")
+            config.artifact_path(RS256_WITNESS),
+            PathBuf::from("/app/Documents/keys/rs256_witness.bin")
         );
         assert_eq!(
-            config.artifact_path(JWT_RS256_INSTANCE),
-            PathBuf::from("/app/Documents/keys/jwt_rs256_instance.bin")
+            config.artifact_path(RS256_INSTANCE),
+            PathBuf::from("/app/Documents/keys/rs256_instance.bin")
         );
     }
 
@@ -311,12 +310,12 @@ mod tests {
 
         // Resolve source paths relative to this crate's manifest directory
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let r1cs_src = manifest.join("../circom/build/jwt_rs256/jwt_rs256_js/jwt_rs256.r1cs");
-        let input_src = manifest.join("../circom/inputs/jwt_rs256/default.json");
+        let r1cs_src = manifest.join("../circom/build/rs256/rs256_js/rs256.r1cs");
+        let input_src = manifest.join("../circom/inputs/rs256/input.json");
 
         assert!(
             r1cs_src.exists(),
-            "R1CS not found at {}. Run `yarn compile:jwt_rs256` first.",
+            "R1CS not found at {}. Run `yarn compile:rs256` first.",
             r1cs_src.display()
         );
         assert!(
@@ -325,9 +324,9 @@ mod tests {
             input_src.display()
         );
 
-        // Mobile PathConfig expects flat structure: {dir}/jwt_rs256.r1cs, {dir}/jwt_rs256_input.json
-        symlink(&r1cs_src, dir.join("jwt_rs256.r1cs")).expect("Failed to symlink R1CS");
-        symlink(&input_src, dir.join("jwt_rs256_input.json")).expect("Failed to symlink input");
+        // Mobile PathConfig expects flat structure: {dir}/rs256.r1cs, {dir}/rs256_input.json
+        symlink(&r1cs_src, dir.join("rs256.r1cs")).expect("Failed to symlink R1CS");
+        symlink(&input_src, dir.join("rs256_input.json")).expect("Failed to symlink input");
 
         // Create keys/ subdirectory for output artifacts
         std::fs::create_dir(dir.join("keys")).expect("Failed to create keys dir");
@@ -354,11 +353,11 @@ mod tests {
 
         // Verify all output files exist in keys/
         let keys_dir = dir.join("keys");
-        assert!(keys_dir.join("jwt_rs256_proving.key").exists());
-        assert!(keys_dir.join("jwt_rs256_verifying.key").exists());
-        assert!(keys_dir.join("jwt_rs256_proof.bin").exists());
-        assert!(keys_dir.join("jwt_rs256_witness.bin").exists());
-        assert!(keys_dir.join("jwt_rs256_instance.bin").exists());
+        assert!(keys_dir.join("rs256_proving.key").exists());
+        assert!(keys_dir.join("rs256_verifying.key").exists());
+        assert!(keys_dir.join("rs256_proof.bin").exists());
+        assert!(keys_dir.join("rs256_witness.bin").exists());
+        assert!(keys_dir.join("rs256_instance.bin").exists());
 
         // Print results for CI visibility
         eprintln!("\n=== Benchmark Results ===");
