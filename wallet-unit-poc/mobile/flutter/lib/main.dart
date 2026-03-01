@@ -23,16 +23,16 @@ Future<void> main() async {
 /// Copy circuit R1CS files and input data from Flutter assets to documents directory.
 ///
 /// Assets are stored flat in the documents directory:
-///   Documents/jwt_rs256.r1cs        (decompressed from .gz)
-///   Documents/jwt_rs256_input.json  (copied as-is)
+///   Documents/rs256.r1cs        (decompressed from .gz)
+///   Documents/rs256_input.json  (copied as-is)
 Future<void> _copyAssetsToDocuments() async {
   try {
     final documentsDir = await getApplicationDocumentsDirectory();
     final basePath = documentsDir.path;
 
     final assets = {
-      'assets/circom/jwt_rs256.r1cs.gz': 'jwt_rs256.r1cs',
-      'assets/circom/jwt_rs256_input.json': 'jwt_rs256_input.json',
+      'assets/circom/rs256.r1cs.gz': 'rs256.r1cs',
+      'assets/circom/rs256_input.json': 'rs256_input.json',
     };
 
     for (final entry in assets.entries) {
@@ -131,7 +131,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
 
   String? _getInputPath(ProofTaskType taskType) {
     if (taskType == ProofTaskType.setup || taskType == ProofTaskType.prove) {
-      return 'jwt_rs256_input.json';
+      return 'rs256_input.json';
     }
     return null;
   }
@@ -265,7 +265,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('zkID - JWT RS256 Proof'),
+        title: const Text('zkID - RS256 Proof'),
         actions: [
           if (_results.isNotEmpty && !_isOperating)
             IconButton(
@@ -329,7 +329,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Run complete JWT-RS256 benchmark: setup, prove, and verify. Results include timing and artifact sizes.',
+                      'Run complete RS256 benchmark: setup, prove, and verify. Results include timing and artifact sizes.',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 12),
@@ -377,7 +377,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.setup,
-              label: 'Setup JWT-RS256 Keys',
+              label: 'Setup RS256 Keys',
               icon: Icons.key,
               color: Colors.blue,
             ),
@@ -389,7 +389,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.prove,
-              label: 'Prove JWT-RS256',
+              label: 'Prove RS256',
               icon: Icons.calculate,
               color: Colors.green,
             ),
@@ -401,7 +401,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.verify,
-              label: 'Verify JWT-RS256',
+              label: 'Verify RS256',
               icon: Icons.check_circle,
               color: Colors.teal,
             ),
