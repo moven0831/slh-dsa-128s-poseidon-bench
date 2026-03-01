@@ -85,7 +85,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: circuit-r1cs
-          path: wallet-unit-poc/circom/build/rs256/rs256_js/rs256.r1cs
+          path: wallet-unit-poc/circom/build/rs256/rs256_js/
 
       - name: Install system dependencies
         run: |
