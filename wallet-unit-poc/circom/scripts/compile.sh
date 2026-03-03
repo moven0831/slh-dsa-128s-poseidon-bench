@@ -36,10 +36,17 @@ case "$1" in
   all)
     echo "Compiling all circuits..."
     mkdir -p build/cpp || { echo "Error: Failed to create cpp directory."; exit 1; }
+
     npx circomkit compile jwt_rs256 || { echo "Error: Failed to compile JWT-RS256."; exit 1; }
     cd build/jwt_rs256/ && mv jwt_rs256.r1cs jwt_rs256_js/ && cd ../.. || { echo "Error: Failed to process JWT-RS256."; exit 1; }
     [ ! -f build/cpp/jwt_rs256.cpp ] && cp build/jwt_rs256/jwt_rs256_cpp/jwt_rs256.cpp build/cpp/ || true
     [ ! -f build/cpp/jwt_rs256.dat ] && cp build/jwt_rs256/jwt_rs256_cpp/jwt_rs256.dat build/cpp/ || true
+
+    npx circomkit compile rs256 || { echo "Error: Failed to compile RS256."; exit 1; }
+    cd build/rs256/ && mv rs256.r1cs rs256_js/ && cd ../.. || { echo "Error: Failed to process RS256."; exit 1; }
+    [ ! -f build/cpp/rs256.cpp ] && cp build/rs256/rs256_cpp/rs256.cpp build/cpp/ || true
+    [ ! -f build/cpp/rs256.dat ] && cp build/rs256/rs256_cpp/rs256.dat build/cpp/ || true
+    
     echo "All circuits compiled successfully."
     ;;
   *)

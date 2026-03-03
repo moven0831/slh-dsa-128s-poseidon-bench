@@ -5,9 +5,6 @@ include "circomlib/circuits/comparators.circom";
 include "@zk-email/circuits/lib/sha.circom";
 include "@zk-email/circuits/lib/rsa.circom";
 include "@zk-email/circuits/utils/array.circom";
-include "components/claim-decoder.circom";
-include "components/payload_matcher.circom";
-include "components/age-verifier.circom";
 
 /// @title Bits2Limbs
 /// @notice Convert a bit array to k limbs of n bits each (little-endian limb order)

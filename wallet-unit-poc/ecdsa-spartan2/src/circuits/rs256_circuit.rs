@@ -253,9 +253,6 @@ impl Rs256Circuit {
             .unwrap_or_default();
         println!("issuer_cn: {}", issuer_cn);
 
-        let json_str = std::fs::read_to_string("./src/circuits/response.json").unwrap();
-        let response: CardSignResponse = serde_json::from_str(&json_str).unwrap();
-
         // Verify signature first
         match Self::verify_card_signature(&response, tbs) {
             Ok(()) => println!("Signature valid"),
@@ -457,7 +454,7 @@ impl SpartanCircuit<E> for Rs256Circuit {
 
     /// RS256 circuit public inputs
     fn public_values(&self) -> Result<Vec<Scalar>, SynthesisError> {
-        let num_public = 17; // 1 (ageAbove18) + 17 (rsaModulus limbs)
+        let num_public = 17; // 17 (rsaModulus limbs)
         let witness = self.get_or_generate_witness().ok();
 
         let mut values = Vec::with_capacity(num_public);

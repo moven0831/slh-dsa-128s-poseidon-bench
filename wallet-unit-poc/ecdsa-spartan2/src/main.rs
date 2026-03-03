@@ -5,7 +5,7 @@
 //!   cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
 //!   cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
 //!   cargo run --release -- rs256 verify
-//!   cargo run --release -- rs256 benchmark
+//!   cargo run --release -- rs256 benchmark --input ../circom/inputs/rs256/input.json"
 
 use ecdsa_spartan2::{
     circuits::rs256_circuit::Rs256Circuit,

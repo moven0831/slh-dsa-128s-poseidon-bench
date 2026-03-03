@@ -55,6 +55,11 @@ jobs:
           cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
           cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
           cargo run --release -- rs256 verify
+          
+      - name: Run ecdsa-spartan2 tests
+        run: |
+          cd wallet-unit-poc/ecdsa-spartan2
+          cargo test --release
 
       - name: Run mopro API tests
         run: |

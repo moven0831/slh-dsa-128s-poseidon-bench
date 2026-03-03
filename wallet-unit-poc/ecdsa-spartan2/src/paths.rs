@@ -32,9 +32,9 @@ impl PathConfig {
     /// Create config for mobile environment.
     ///
     /// Mobile apps typically extract assets to a Documents directory with a flat structure:
-    /// - `{documents}/jwt_rs256_input.json`
+    /// - `{documents}/rs256_input.json`
     /// - `{documents}/keys/*.key`
-    /// - `{documents}/jwt_rs256.r1cs`
+    /// - `{documents}/rs256.r1cs`
     pub fn mobile(documents_path: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: documents_path.into(),
