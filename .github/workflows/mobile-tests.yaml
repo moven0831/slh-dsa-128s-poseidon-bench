@@ -50,23 +50,23 @@ jobs:
       - name: Install JS dependencies
         run: cd wallet-unit-poc/circom && yarn
 
-      - name: Compile JWT-RS256 circuit
-        run: cd wallet-unit-poc/circom && yarn compile:jwt_rs256
+      - name: Compile RS256 circuit
+        run: cd wallet-unit-poc/circom && yarn compile:rs256
 
       - name: Upload circuit C++ artifacts
         uses: actions/upload-artifact@v4
         with:
           name: circuit-cpp
           path: |
-            wallet-unit-poc/circom/build/cpp/jwt_rs256.cpp
-            wallet-unit-poc/circom/build/cpp/jwt_rs256.dat
+            wallet-unit-poc/circom/build/cpp/rs256.cpp
+            wallet-unit-poc/circom/build/cpp/rs256.dat
           retention-days: 1
 
       - name: Upload circuit R1CS artifact
         uses: actions/upload-artifact@v4
         with:
           name: circuit-r1cs
-          path: wallet-unit-poc/circom/build/jwt_rs256/jwt_rs256_js/jwt_rs256.r1cs
+          path: wallet-unit-poc/circom/build/rs256/rs256_js/rs256.r1cs
           retention-days: 1
 
   rust-tests:
@@ -85,7 +85,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: circuit-r1cs
-          path: wallet-unit-poc/circom/build/jwt_rs256/jwt_rs256_js/
+          path: wallet-unit-poc/circom/build/rs256/rs256_js/
 
       - name: Install system dependencies
         run: |
@@ -113,9 +113,9 @@ jobs:
       - name: Run ecdsa-spartan2 e2e flow
         run: |
           cd wallet-unit-poc/ecdsa-spartan2
-          cargo run --release -- jwt_rs256 setup --input ../circom/inputs/jwt_rs256/default.json
-          cargo run --release -- jwt_rs256 prove --input ../circom/inputs/jwt_rs256/default.json
-          cargo run --release -- jwt_rs256 verify
+          cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
+          cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
+          cargo run --release -- rs256 verify
 
       - name: Run mobile API tests
         run: |

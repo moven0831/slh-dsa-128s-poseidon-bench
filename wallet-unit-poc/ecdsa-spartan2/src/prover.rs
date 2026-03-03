@@ -258,11 +258,10 @@ pub fn prove_circuit_in_memory<C: SpartanCircuit<E> + Clone + std::fmt::Debug>(
     let mut transcript = <E as Engine>::TE::new(b"R1CSSNARK");
     transcript.absorb(b"vk", &pk.vk_digest);
 
-    let public_values = SpartanCircuit::<E>::public_values(&circuit).map_err(|e| {
-        SpartanError::SynthesisError {
+    let public_values =
+        SpartanCircuit::<E>::public_values(&circuit).map_err(|e| SpartanError::SynthesisError {
             reason: format!("Circuit does not provide public IO: {e}"),
-        }
-    })?;
+        })?;
 
     transcript.absorb(b"public_values", &public_values.as_slice());
 
@@ -312,11 +311,10 @@ pub fn reblind_in_memory<C: SpartanCircuit<E>>(
     let mut reblind_transcript = <E as Engine>::TE::new(b"R1CSSNARK");
     reblind_transcript.absorb(b"vk", &pk.vk_digest);
 
-    let public_values = SpartanCircuit::<E>::public_values(&circuit).map_err(|e| {
-        SpartanError::SynthesisError {
+    let public_values =
+        SpartanCircuit::<E>::public_values(&circuit).map_err(|e| SpartanError::SynthesisError {
             reason: format!("Circuit does not provide public IO: {e}"),
-        }
-    })?;
+        })?;
 
     reblind_transcript.absorb(b"public_values", &public_values.as_slice());
 

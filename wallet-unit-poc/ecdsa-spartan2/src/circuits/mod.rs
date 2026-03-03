@@ -1,1 +1,1 @@
-pub mod jwt_rs256_circuit;
+pub mod rs256_circuit;

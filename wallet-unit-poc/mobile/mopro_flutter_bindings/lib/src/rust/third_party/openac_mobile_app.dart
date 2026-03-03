@@ -10,15 +10,15 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 Future<void> initApp() => RustLib.instance.api.openacMobileAppInitApp();
 
-/// Setup JWT-RS256 circuit keys
-/// Generates proving and verifying keys for the jwt_rs256 circuit
+/// Setup RS256 circuit keys
+/// Generates proving and verifying keys for the rs256 circuit
 Future<String> setupKeys({required String documentsPath, String? inputPath}) =>
     RustLib.instance.api.openacMobileAppSetupKeys(
       documentsPath: documentsPath,
       inputPath: inputPath,
     );
 
-/// Generate JWT-RS256 circuit proof
+/// Generate RS256 circuit proof
 /// Runs proving using existing keys
 Future<ProofResult> prove({required String documentsPath, String? inputPath}) =>
     RustLib.instance.api.openacMobileAppProve(
@@ -26,12 +26,12 @@ Future<ProofResult> prove({required String documentsPath, String? inputPath}) =>
       inputPath: inputPath,
     );
 
-/// Verify JWT-RS256 circuit proof
+/// Verify RS256 circuit proof
 /// Verifies the proof using the verifying key
 Future<bool> verify({required String documentsPath}) =>
     RustLib.instance.api.openacMobileAppVerify(documentsPath: documentsPath);
 
-/// Run complete benchmark pipeline for JWT-RS256 circuit
+/// Run complete benchmark pipeline for RS256 circuit
 /// Executes setup, prove, and verify with timing and size metrics
 Future<BenchmarkResults> runCompleteBenchmark({
   required String documentsPath,

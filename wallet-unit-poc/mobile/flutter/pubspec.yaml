@@ -55,8 +55,8 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/circom/jwt_rs256.r1cs.gz
-    - assets/circom/jwt_rs256_input.json
+    - assets/circom/rs256.r1cs.gz
+    - assets/circom/rs256_input.json
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
