@@ -111,7 +111,7 @@ export class WasmBridge {
     } else {
       try {
         // @ts-expect-error Dynamic WASM import path resolved at runtime
-        const module = await import("../wasm/pkg/openac_wasm.js");
+        const module = await import(/* webpackIgnore: true */ "../wasm/pkg/openac_wasm.js");
         this.wasm = module as OpenACWasmModule;
       } catch {
         throw new WasmError(

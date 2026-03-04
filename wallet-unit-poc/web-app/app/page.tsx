@@ -305,7 +305,7 @@ export default function Home() {
         {/* Step 3: Generate Proofs */}
         <StepCard
           title="3. Generate ZK Proofs"
-          description="WASM witness generation → shared blinds → Spartan2 prove + reblind for both circuits. This takes ~50s."
+          description="WASM witness generation → shared blinds → Spartan2 prove + reblind for both circuits."
           status={steps[2].status}
           onRun={runProve}
           disabled={!ready || !state.inputsResult}

@@ -34,7 +34,7 @@ export class WitnessCalculator {
   }
 
   async init(): Promise<void> {
-    const builderPath = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "witness_calculator.js");
+    const builderPath = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "witness_calculator.cjs");
     const module = await import(/* webpackIgnore: true */ builderPath);
     this.builder = module.default ?? module;
   }
