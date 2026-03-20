@@ -138,7 +138,13 @@ impl Rs256Circuit {
         Ok(())
     }
 
-    pub fn generate_input_from_response(response_path: &PathBuf, tbs: &[u8]) {
+    pub fn generate_input_from_response(
+        response_path: &PathBuf,
+        tbs: &[u8],
+        smt_server: Option<&str>,
+        issuer: &str,
+        output_path: &str,
+    ) {
         let response_string = std::fs::read_to_string(response_path).unwrap();
         let response: CardSignResponse = serde_json::from_str(&response_string).unwrap();
 
@@ -259,14 +265,33 @@ impl Rs256Circuit {
             Err(e) => println!("❌ Verification failed: {}", e),
         }
 
+        // Fetch SMT proof if server is specified
+        let smt_inputs = if let Some(server_url) = smt_server {
+            println!("Fetching SMT proof from {}...", server_url);
+            match crate::smt_client::fetch_smt_proof(server_url, issuer, &serial_hex, 128) {
+                Ok(inputs) => {
+                    println!("  SMT root: {}...", &inputs.smt_root[..20.min(inputs.smt_root.len())]);
+                    println!("  Serial (decimal): {}...", &inputs.serial_number[..20.min(inputs.serial_number.len())]);
+                    println!("  isOld0: {}", inputs.smt_is_old0);
+                    Some(inputs)
+                }
+                Err(e) => {
+                    eprintln!("Failed to fetch SMT proof: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        } else {
+            None
+        };
+
         // Generate circuit input
-        let circuit_input = Self::generate_circuit_input(&response, tbs);
+        let circuit_input = Self::generate_circuit_input(&response, tbs, smt_inputs.as_ref());
         std::fs::write(
-            "rs256_input.json",
+            output_path,
             serde_json::to_string_pretty(&circuit_input).unwrap(),
         )
         .unwrap();
-        println!("Circuit input written to rs256_input.json");
+        println!("Circuit input written to {}", output_path);
 
 
     }
@@ -274,6 +299,7 @@ impl Rs256Circuit {
     fn generate_circuit_input(
         response: &CardSignResponse,
         original_data: &[u8],
+        smt_inputs: Option<&crate::smt_client::SmtCircuitInputs>,
     ) -> serde_json::Value {
         const MAX_MESSAGE_LENGTH: usize = 1536;
         const RSA_N: usize = 121;
@@ -304,12 +330,24 @@ impl Rs256Circuit {
         let message = Self::sha256_pad(original_data, MAX_MESSAGE_LENGTH);
         let padded_len = Self::sha256_padded_length(original_data.len());
 
-        serde_json::json!({
+        let mut input = serde_json::json!({
             "message": message.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
             "messageLength": padded_len.to_string(),
             "rsaModulus": rsa_modulus,
             "rsaSignature": rsa_signature,
-        })
+        });
+
+        if let Some(smt) = smt_inputs {
+            let obj = input.as_object_mut().unwrap();
+            obj.insert("smtRoot".to_string(), serde_json::json!(smt.smt_root));
+            obj.insert("serialNumber".to_string(), serde_json::json!(smt.serial_number));
+            obj.insert("smtSiblings".to_string(), serde_json::json!(smt.smt_siblings));
+            obj.insert("smtOldKey".to_string(), serde_json::json!(smt.smt_old_key));
+            obj.insert("smtOldValue".to_string(), serde_json::json!(smt.smt_old_value));
+            obj.insert("smtIsOld0".to_string(), serde_json::json!(smt.smt_is_old0));
+        }
+
+        input
     }
 
     fn bigint_to_chunks(n: &BigUint, count: usize, chunk_bits: usize) -> Vec<String> {
@@ -454,7 +492,7 @@ impl SpartanCircuit<E> for Rs256Circuit {
 
     /// RS256 circuit public inputs
     fn public_values(&self) -> Result<Vec<Scalar>, SynthesisError> {
-        let num_public = 17; // 17 (rsaModulus limbs)
+        let num_public = 19; // 17 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber)
         let witness = self.get_or_generate_witness().ok();
 
         let mut values = Vec::with_capacity(num_public);
