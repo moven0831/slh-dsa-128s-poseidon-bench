@@ -78,11 +78,11 @@ template CertRSA256Verify(maxMessageLength, n, k) {
 template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits, smtDepth) {
     // === Inputs ===
     signal input tbs[maxMessageLength];    // TBS certificate bytes
-    signal input tbs_zero_padded[maxMessageLength];    // TBS certificate bytes zero padded
     signal input tbs_length;                // actual TBS length
-    signal input actual_tbs_length;         // actual TBS length
     signal input user_cert[maxMessageLength];    // user certificate bytes
     signal input user_cert_length;                // actual user certificate length
+    signal input user_cert_zero_padded[maxMessageLength];    // user cert certificate bytes zero padded
+    signal input actual_user_cert_length;         // actual user certificate length
     signal input user_rsa_modulus[k]; // user's RSA public key
     signal input user_rsa_signature[k];                // certificate signature
 
@@ -97,7 +97,7 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input smtOldValue;
     signal input smtIsOld0;
 
-    VerifySHA256Padding(maxMessageLength)(tbs_zero_padded, tbs, actual_tbs_length);
+    VerifySHA256Padding(maxMessageLength)(user_cert_zero_padded, user_cert, actual_user_cert_length);
 
     CertRSA256Verify(maxMessageLength, n, k)(
         tbs, 
