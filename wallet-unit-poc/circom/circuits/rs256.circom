@@ -6,6 +6,7 @@ include "@zk-email/circuits/lib/sha.circom";
 include "@zk-email/circuits/lib/rsa.circom";
 include "@zk-email/circuits/utils/array.circom";
 include "components/smt-nonmembership.circom";
+include "utils/utils.circom";
 
 /// @title Bits2Limbs
 /// @notice Convert a bit array to k limbs of n bits each (little-endian limb order)
@@ -67,19 +68,26 @@ template CertRSA256Verify(maxMessageLength, n, k) {
     rsaVerifier.message <== hashToLimbs.out;
 }
 
-/// @title CertRSA256VerifyWithRevocation
-/// @notice Verifies an X.509 certificate RSA-SHA256 signature and proves
-///         the certificate's serial number is NOT in the revocation SMT
+/// @title FullCertRSA256Verify
+/// @notice Verifies an X.509 certificate RSA-SHA256 signature
 /// @param maxMessageLength Maximum TBS certificate bytes
 /// @param n RSA chunk bits (121)
 /// @param k RSA chunks (17 for 2048-bit)
-/// @param smtDepth Sparse Merkle Tree depth (128)
-template CertRSA256VerifyWithRevocation(maxMessageLength, n, k, smtDepth) {
-    // === RSA Verification Inputs ===
-    signal input message[maxMessageLength];
-    signal input messageLength;
-    signal input rsaModulus[k];
-    signal input rsaSignature[k];
+/// @param modulusBits   Actual RSA key size in bits (e.g. 2048) — must be
+///                      divisible by 8. Separate from n*k (e.g. 121*17=2057).
+template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits, smtDepth) {
+    // === Inputs ===
+    signal input tbs[maxMessageLength];    // TBS certificate bytes
+    signal input tbs_zero_padded[maxMessageLength];    // TBS certificate bytes zero padded
+    signal input tbs_length;                // actual TBS length
+    signal input actual_tbs_length;         // actual TBS length
+    signal input user_cert[maxMessageLength];    // user certificate bytes
+    signal input user_cert_length;                // actual user certificate length
+    signal input user_rsa_modulus[k]; // user's RSA public key
+    signal input user_rsa_signature[k];                // certificate signature
+
+    signal input issuer_rsa_modulus[k];                  // issuer's RSA public key
+    signal input issuer_rsa_signature[k];                // certificate signature
 
     // === SMT Non-Membership Inputs ===
     signal input smtRoot;
@@ -89,30 +97,28 @@ template CertRSA256VerifyWithRevocation(maxMessageLength, n, k, smtDepth) {
     signal input smtOldValue;
     signal input smtIsOld0;
 
-    // === Step 1: RSA-SHA256 Verification (same as CertRSA256Verify) ===
-    AssertZeroPadding(maxMessageLength)(message, messageLength);
+    VerifySHA256Padding(maxMessageLength)(tbs_zero_padded, tbs, actual_tbs_length);
 
-    signal sha[256] <== Sha256Bytes(maxMessageLength)(message, messageLength);
+    CertRSA256Verify(maxMessageLength, n, k)(
+        tbs, 
+        tbs_length, 
+        user_rsa_modulus, 
+        user_rsa_signature
+    );
 
-    signal shaReversed[256];
-    for (var i = 0; i < 256; i++) {
-        shaReversed[i] <== sha[255 - i];
-    }
+    CertRSA256Verify(maxMessageLength, n, k)(
+        user_cert, 
+        user_cert_length, 
+        issuer_rsa_modulus, 
+        issuer_rsa_signature
+    );
 
-    component hashToLimbs = Bits2Limbs(256, n, k);
-    hashToLimbs.in <== shaReversed;
-
-    component rsaVerifier = RSAVerifier65537(n, k);
-    rsaVerifier.modulus <== rsaModulus;
-    rsaVerifier.signature <== rsaSignature;
-    rsaVerifier.message <== hashToLimbs.out;
-
-    // === Step 2: SMT Non-Membership Proof (revocation check) ===
-    component smtVerifier = SMTNonMembershipVerifier(smtDepth);
-    smtVerifier.root <== smtRoot;
-    smtVerifier.key <== serialNumber;
-    smtVerifier.siblings <== smtSiblings;
-    smtVerifier.oldKey <== smtOldKey;
-    smtVerifier.oldValue <== smtOldValue;
-    smtVerifier.isOld0 <== smtIsOld0;
+    SMTNonMembershipVerifier(smtDepth)(
+        smtRoot,
+        serialNumber,
+        smtSiblings,
+        smtOldKey,
+        smtOldValue,
+        smtIsOld0
+    );
 }
