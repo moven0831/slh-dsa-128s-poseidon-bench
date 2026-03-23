@@ -81,10 +81,14 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input tbs_length;                // actual TBS length
     signal input user_cert[maxMessageLength];    // user certificate bytes
     signal input user_cert_length;                // actual user certificate length
+    signal input issuer_tbs_length;                // actual issuer TBS length
     signal input user_cert_zero_padded[maxMessageLength];    // user cert certificate bytes zero padded
     signal input actual_user_cert_length;         // actual user certificate length
     signal input user_rsa_modulus[k]; // user's RSA public key
     signal input user_rsa_signature[k];                // certificate signature
+     // These are the "parse SPKI" hints the prover supplies:
+    signal input user_modulus_offset;      // where modulus bytes start
+    signal input user_modulus_tag_offset;  // where 0x02 INTEGER tag is
 
     signal input issuer_rsa_modulus[k];                  // issuer's RSA public key
     signal input issuer_rsa_signature[k];                // certificate signature
@@ -97,12 +101,19 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input smtOldValue;
     signal input smtIsOld0;
 
-    VerifySHA256Padding(maxMessageLength)(user_cert_zero_padded, user_cert, actual_user_cert_length);
+    VerifyTBSinCert(maxMessageLength, maxMessageLength)(user_cert_zero_padded, user_cert, issuer_tbs_length);
+
+    signal user_rsa_extracted_modulus[k];
+    ExtractModulus(maxMessageLength, n, k, modulusBits)(
+        in               <== user_cert_zero_padded,
+        modulusOffset    <== user_modulus_offset,
+        modulusTagOffset <== user_modulus_tag_offset
+    ) ==> user_rsa_extracted_modulus;
 
     CertRSA256Verify(maxMessageLength, n, k)(
         tbs, 
         tbs_length, 
-        user_rsa_modulus, 
+        user_rsa_extracted_modulus, 
         user_rsa_signature
     );
 

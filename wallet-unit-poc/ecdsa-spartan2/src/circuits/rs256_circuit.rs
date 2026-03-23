@@ -76,6 +76,12 @@ struct RS256CircuitInput {
     rsa_signature: Vec<String>,
 }
 
+#[derive(Debug)]
+struct CertOffsets {
+    pub modulus_offset: usize, // first real modulus byte (after sign byte)
+    pub modulus_tag_offset: usize, // where 0x02 INTEGER tag is
+}
+
 impl Default for Rs256Circuit {
     fn default() -> Self {
         Self {
@@ -435,14 +441,20 @@ impl Rs256Circuit {
             Self::generate_rsa_circuit_input(user_cert, user_signature, user_tbs);
         let issuer_circuit_input =
             Self::generate_rsa_circuit_input(issuer_cert, issuer_signature, issuer_tbs);
-        
+        let user_cert_der = user_cert.to_der().unwrap();
+        let user_offsets = Self::parse_cert_offsets(&user_cert_der);
+
+
         serde_json::json!({
             "tbs": user_circuit_input.message,
             "tbs_length": user_circuit_input.message_length,
             "user_cert": issuer_circuit_input.message,
             "user_cert_length": issuer_circuit_input.message_length,
-            "user_cert_zero_padded": zero_pad(issuer_tbs),
-            "actual_user_cert_length": issuer_tbs.len(),
+            "issuer_tbs_length": issuer_tbs.len(),
+            "user_cert_zero_padded": zero_pad(&user_cert_der),
+            "actual_user_cert_length": user_cert_der.len(),
+            "user_modulus_offset": user_offsets.modulus_offset,
+            "user_modulus_tag_offset": user_offsets.modulus_tag_offset,
             "user_rsa_modulus": user_circuit_input.rsa_modulus,
             "user_rsa_signature": user_circuit_input.rsa_signature,
             "issuer_rsa_modulus": issuer_circuit_input.rsa_modulus,
@@ -454,6 +466,184 @@ impl Rs256Circuit {
             "smtOldValue": smt_inputs.unwrap().smt_old_value,
             "smtIsOld0": smt_inputs.unwrap().smt_is_old0,
         })
+    }
+
+    fn parse_cert_offsets(der: &[u8]) -> CertOffsets {
+        let cert = Certificate::from_der(der).expect("Failed to parse certificate DER");
+
+        let tbs_offset = Self::find_tbs_offset(der);
+        println!("find_tbs_offset = {}", Self::find_tbs_offset(der));
+        let tbs_der = cert.tbs_certificate.to_der().unwrap();
+        let tbs_length = tbs_der.len();
+
+        let subject_der = cert.tbs_certificate.subject.to_der().unwrap();
+        let subject_offset =
+            Self::find_subslice(der, &subject_der).expect("Subject not found in cert DER");
+        let subject_length = subject_der.len();
+
+        let (modulus_offset, modulus_tag_offset) = Self::find_modulus_offset(der);
+
+        // ── Sanity checks ─────────────────────────────────────────────────────
+        assert_eq!(
+            der[tbs_offset], 0x30,
+            "TBS tag wrong at {}: got 0x{:02x}",
+            tbs_offset, der[tbs_offset]
+        );
+        assert_eq!(
+            der[subject_offset], 0x30,
+            "Subject tag wrong at {}: got 0x{:02x}",
+            subject_offset, der[subject_offset]
+        );
+        assert_eq!(
+            der[modulus_tag_offset], 0x02,
+            "Modulus INTEGER tag wrong at {}: got 0x{:02x}",
+            modulus_tag_offset, der[modulus_tag_offset]
+        );
+
+        println!("modulus_tag_offset: {}", modulus_tag_offset);
+        println!("modulus_offset:     {}", modulus_offset);
+        println!(
+            "gap tag→value:      {}",
+            modulus_offset - modulus_tag_offset
+        );
+
+        CertOffsets {
+            modulus_offset,
+            modulus_tag_offset,
+        }
+    }
+
+    // ── TBS offset ────────────────────────────────────────────────────────────
+    // X.509 DER layout:
+    //   30 82 XX XX        SEQUENCE (Certificate)      ← outer, 4 bytes
+    //     30 82 YY YY      SEQUENCE (TBSCertificate)   ← starts at byte 4
+    fn find_tbs_offset(der: &[u8]) -> usize {
+        // Outer SEQUENCE tag(1) + length field
+        let mut pos = 1usize; // skip 0x30 tag
+        let (_, lb) = Self::read_der_len(der, pos);
+        pos += lb;
+        // pos now points to start of TBSCertificate SEQUENCE
+        pos
+    }
+
+    // ── Modulus offset ────────────────────────────────────────────────────────
+    // Returns (modulus_value_offset, integer_tag_offset)
+    fn find_modulus_offset(der: &[u8]) -> (usize, usize) {
+        let cert = Certificate::from_der(der).unwrap();
+        let spki_der = cert
+            .tbs_certificate
+            .subject_public_key_info
+            .to_der()
+            .unwrap();
+
+        // Find ALL occurrences to detect ambiguity
+        let occurrences: Vec<usize> = der
+            .windows(spki_der.len())
+            .enumerate()
+            .filter(|(_, w)| *w == spki_der.as_slice())
+            .map(|(i, _)| i)
+            .collect();
+
+        println!("SPKI occurrences in cert: {:?}", occurrences);
+        assert_eq!(
+            occurrences.len(),
+            1,
+            "Expected exactly 1 SPKI occurrence, found {}",
+            occurrences.len()
+        );
+
+        // Find where SPKI starts in the full cert DER
+        let spki_abs = Self::find_subslice(der, &spki_der).expect("SPKI not found in cert DER");
+
+        let mut pos = 0usize;
+
+        // Skip outer SPKI SEQUENCE tag + length
+        pos += 1;
+        let (_, lb) = Self::read_der_len(&spki_der, pos);
+        pos += lb;
+
+        // Skip AlgorithmIdentifier SEQUENCE tag + length + content
+        pos += 1;
+        let (alg_len, alb) = Self::read_der_len(&spki_der, pos);
+        pos += alb + alg_len;
+
+        // Skip BIT STRING tag + length + unused-bits byte (0x00)
+        pos += 1;
+        let (_, blb) = Self::read_der_len(&spki_der, pos);
+        pos += blb;
+        pos += 1; // unused bits byte
+
+        // Skip RSAPublicKey SEQUENCE tag + length
+        pos += 1;
+        let (_, slb) = Self::read_der_len(&spki_der, pos);
+        pos += slb;
+
+        // Now at INTEGER tag for modulus
+        assert_eq!(
+            spki_der[pos], 0x02,
+            "Expected INTEGER tag at spki pos {}, got 0x{:02x}",
+            pos, spki_der[pos]
+        );
+        let tag_pos = pos; // record tag position
+        pos += 1; // skip tag
+
+        // Skip length field (1 byte short form or 3 bytes long form for RSA-2048)
+        let (mod_len, mlb) = Self::read_der_len(&spki_der, pos);
+        pos += mlb;
+
+        println!(
+            "modulus DER length field: {} bytes, value: {}",
+            mlb, mod_len
+        );
+
+        // Skip leading 0x00 sign byte if present
+        // RSA-2048 modulus MSB is usually set → DER adds 0x00 to keep it positive
+        if spki_der[pos] == 0x00 {
+            println!("skipping sign byte at spki pos {}", pos);
+            pos += 1;
+        }
+
+        let modulus_offset = spki_abs + pos;
+        let tag_offset = spki_abs + tag_pos;
+
+        // Final validation
+        assert_eq!(
+            der[tag_offset], 0x02,
+            "Final check: der[{}] = 0x{:02x}, expected 0x02",
+            tag_offset, der[tag_offset]
+        );
+        assert!(
+            modulus_offset > tag_offset,
+            "modulus_offset {} must be > tag_offset {}",
+            modulus_offset,
+            tag_offset
+        );
+
+        (modulus_offset, tag_offset)
+    }
+
+    // ── DER helpers ───────────────────────────────────────────────────────────
+
+    /// Returns (length_value, bytes_consumed_by_length_field)
+    fn read_der_len(der: &[u8], pos: usize) -> (usize, usize) {
+        if der[pos] & 0x80 == 0 {
+            // Short form: single byte
+            (der[pos] as usize, 1)
+        } else {
+            // Long form: first byte = 0x80 | num_following_bytes
+            let num_len_bytes = (der[pos] & 0x7f) as usize;
+            let value =
+                (0..num_len_bytes).fold(0usize, |acc, i| (acc << 8) | der[pos + 1 + i] as usize);
+            (value, 1 + num_len_bytes)
+        }
+    }
+
+    /// Find first occurrence of needle in haystack, return start index
+    fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        if needle.is_empty() {
+            return Some(0);
+        }
+        haystack.windows(needle.len()).position(|w| w == needle)
     }
 
     fn bigint_to_chunks(n: &BigUint, count: usize, chunk_bits: usize) -> Vec<String> {

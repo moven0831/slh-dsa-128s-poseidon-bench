@@ -279,55 +279,142 @@ template ExtractBase64UrlValue(maxPayloadLength, maxValueChars, expectedLength) 
     closingChar === 34;
 }
 
-template IndexSelector(maxMessageLength) {
-    signal input sha_padded[maxMessageLength];
-    signal input len;
-    component isEqIdx[maxMessageLength];
-    signal selected[maxMessageLength];
-    signal sum;
+template VerifyTBSinCert(MAX_CERT_LEN, MAX_TBS_LEN) {
+    var TBS_OFFSET = 4;
 
-    for (var i = 0; i < maxMessageLength; i++) {
-        isEqIdx[i] = IsEqual();
-        isEqIdx[i].in[0] <== i;
-        isEqIdx[i].in[1] <== len;
-        selected[i] <== sha_padded[i] * isEqIdx[i].out;
-    }
+    signal input user_cert[MAX_CERT_LEN];
+    signal input tbs[MAX_TBS_LEN];
+    signal input issuer_tbs_length;          // actual length, runtime
 
-    // sum = sha_padded[len] (only one term is non-zero)
-    var acc = 0;
-    signal sums[maxMessageLength + 1];
-    sums[0] <== 0;
-    for (var i = 0; i < maxMessageLength; i++) {
-        sums[i+1] <== sums[i] + selected[i];
-    }
-    sums[maxMessageLength] === 0x80;
-}
+    component isLt[MAX_TBS_LEN];
+    signal diff[MAX_TBS_LEN];
 
-template VerifySHA256Padding(maxMessageLength) {
-    signal input zero_padded[maxMessageLength];  // [msg | 0x00 * padding]
-    signal input sha_padded[maxMessageLength];   // [msg | 0x80 | 0x00... | bit_len_be | 0x00...]
-    signal input len;                   // actual message length
-
-    component isLt[maxMessageLength];
-    component isEq[maxMessageLength];
-
-    for (var i = 0; i < maxMessageLength; i++) {
-        // 1. message region must match
+    for (var i = 0; i < MAX_TBS_LEN - TBS_OFFSET; i++) {
         isLt[i] = LessThan(12);
         isLt[i].in[0] <== i;
-        isLt[i].in[1] <== len;
-        (zero_padded[i] - sha_padded[i]) * isLt[i].out === 0;
+        isLt[i].in[1] <== issuer_tbs_length;
 
-        // 2. zero_pad region must be 0
-        isEq[i] = IsEqual();
-        isEq[i].in[0] <== i;
-        isEq[i].in[1] <== len;
-        // if i >= len: zero_padded[i] must be 0
-        zero_padded[i] * (1 - isLt[i].out) === 0;
+        // only enforce if i < issuer_tbs_length
+        // (user_cert[4+i] - tbs[i]) * isLt[i].out === 0
+        diff[i] <== user_cert[TBS_OFFSET + i] - tbs[i];
+        diff[i] * isLt[i].out === 0;
+    }
+}
+
+/// @title ExtractModulus
+/// @notice Extracts an RSA public key modulus from a DER-encoded certificate
+/// @dev    SubjectPublicKeyInfo layout:
+///           SEQUENCE {
+///             SEQUENCE { OID rsaEncryption  NULL }
+///             BIT STRING {
+///               SEQUENCE {
+///                 INTEGER  ← modulus value bytes start at modulusOffset
+///                 INTEGER  ← exponent (65537)
+///               }
+///             }
+///           }
+///         Prover supplies modulusTagOffset pointing to the 0x02 INTEGER tag
+///         and modulusOffset pointing to the first actual modulus byte
+///         (after tag + length field + optional 0x00 sign byte).
+///         Circuit validates the INTEGER tag at modulusTagOffset.
+///         DER is big-endian; limbs are packed LSB-first for RSAVerifier65537.
+///         For non-byte-aligned limb sizes (e.g. n=121), bits beyond
+///         modulusBits in the top limb are zero-padded.
+/// @param maxLen        Maximum certificate DER byte length
+/// @param n             Bits per RSA limb (e.g. 121)
+/// @param k             Number of RSA limbs (e.g. 17 for RSA-2048)
+/// @param modulusBits   Actual RSA key size in bits (e.g. 2048) — must be
+///                      divisible by 8. Separate from n*k (e.g. 121*17=2057).
+/// @input in                Certificate DER bytes, zero-padded to maxLen
+/// @input modulusOffset     Byte offset of first modulus value byte in `in`
+///                          (points past tag + length field + sign byte)
+/// @input modulusTagOffset  Byte offset of the INTEGER tag (0x02) in `in`
+///                          Circuit asserts in[modulusTagOffset] == 2
+/// @output out              Modulus as k limbs of n bits, LSB limb first
+///                          Compatible with RSAVerifier65537(n, k)
+template ExtractModulus(maxLen, n, k, modulusBits) {
+    var modulusBytes = modulusBits \ 8;  // 2048\8 = 256 bytes
+
+    signal input in[maxLen];
+    signal input modulusOffset;
+    signal input modulusTagOffset;
+    signal output out[k];
+
+    // ── Step 1: Validate INTEGER tag (0x02) at modulusTagOffset ──────────
+    // Prevents prover from pointing at arbitrary bytes as the modulus
+    component tagSel = Multiplexer(1, maxLen);
+    for (var i = 0; i < maxLen; i++) {
+        tagSel.inp[i][0] <== in[i];
+    }
+    tagSel.sel <== modulusTagOffset;
+    tagSel.out[0] === 2;  // 0x02 = INTEGER tag
+
+    // ── Step 2: Extract modulusBytes bytes starting at modulusOffset ──────
+    // Uses clamped selector to avoid Multiplexer out-of-bounds assert
+    component bytesel[modulusBytes];
+    component ltn[modulusBytes];
+    signal modBytes[modulusBytes];
+
+    for (var i = 0; i < modulusBytes; i++) {
+        // Check modulusOffset + i is within maxLen
+        ltn[i] = LessThan(12);
+        ltn[i].in[0] <== modulusOffset + i;
+        ltn[i].in[1] <== maxLen;
+
+        bytesel[i] = Multiplexer(1, maxLen);
+        for (var j = 0; j < maxLen; j++) {
+            bytesel[i].inp[j][0] <== in[j];
+        }
+        // Clamp selector: use modulusOffset+i if in bounds, else 0
+        bytesel[i].sel <== ltn[i].out * (modulusOffset + i) +
+                           (1 - ltn[i].out) * 0;
+
+        // Zero out if out of bounds
+        modBytes[i] <== bytesel[i].out[0] * ltn[i].out;
     }
 
-    // 3. 0x80 byte must be at position `len` in sha_padded
-    component sel = IndexSelector(maxMessageLength);
-    sel.sha_padded <== sha_padded;
-    sel.len <== len;
+    // ── Step 3: Bytes → flat bit array (MSB first) ────────────────────────
+    // modBytes[0] is the most significant byte (big-endian DER)
+    // bits[0] = MSB of modBytes[0], bits[modulusBits-1] = LSB of last byte
+    component byte2bits[modulusBytes];
+    signal bits[modulusBytes * 8];  // = modulusBits bits
+
+    for (var i = 0; i < modulusBytes; i++) {
+        byte2bits[i] = Num2Bits(8);
+        byte2bits[i].in <== modBytes[i];
+        for (var j = 0; j < 8; j++) {
+            bits[i * 8 + j] <== byte2bits[i].out[7 - j];  // MSB first
+        }
+    }
+
+    // ── Step 4: Pack bits → k limbs of n bits, LSB limb first ────────────
+    // bits[0]          = MSB of modulus
+    // bits[modulusBits-1] = LSB of modulus
+    //
+    // limb[0] = least significant n bits of modulus
+    // limb[k-1] = most significant n bits of modulus
+    //
+    // For i-th limb, j-th bit:
+    //   bitPos = i*n + j  (position from LSB end)
+    //   maps to bits[modulusBits - 1 - bitPos]
+    //
+    // If bitPos >= modulusBits (top limb overflow when n*k > modulusBits),
+    //   zero-pad those bits
+    component b2n[k];
+
+    for (var i = 0; i < k; i++) {
+        b2n[i] = Bits2Num(n);
+        for (var j = 0; j < n; j++) {
+            var bitPos = i * n + j;
+            if (bitPos < modulusBits) {
+                b2n[i].in[j] <== bits[modulusBits - 1 - bitPos];
+            } else {
+                // Zero-pad top limb bits that exceed modulusBits
+                // e.g. n=121, k=17: n*k=2057 but modulusBits=2048
+                // limb[16] bits 2048..2056 are zero
+                b2n[i].in[j] <== 0;
+            }
+        }
+        out[i] <== b2n[i].out;
+    }
 }
