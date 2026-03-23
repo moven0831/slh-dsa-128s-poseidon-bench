@@ -79,9 +79,9 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     // === Inputs ===
     signal input tbs[maxMessageLength];    // TBS certificate bytes
     signal input tbs_length;                // actual TBS length
-    signal input user_cert[maxMessageLength];    // user certificate bytes
-    signal input user_cert_length;                // actual user certificate length
-    signal input issuer_tbs_length;                // actual issuer TBS length
+    signal input issuer_tbs[maxMessageLength];    // issuer TBS certificate bytes
+    signal input issuer_tbs_length;                // issuer TBS length
+    signal input actual_issuer_tbs_length; // actual issuer TBS length
     signal input user_cert_zero_padded[maxMessageLength];    // user cert certificate bytes zero padded
     signal input actual_user_cert_length;         // actual user certificate length
     signal input user_rsa_signature[k];                // certificate signature
@@ -100,7 +100,7 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input smtOldValue;
     signal input smtIsOld0;
 
-    VerifyTBSinCert(maxMessageLength, maxMessageLength)(user_cert_zero_padded, user_cert, issuer_tbs_length);
+    VerifyTBSinCert(maxMessageLength, maxMessageLength)(user_cert_zero_padded, issuer_tbs, actual_issuer_tbs_length);
 
     signal user_rsa_extracted_modulus[k];
     ExtractModulus(maxMessageLength, n, k, modulusBits)(
@@ -117,8 +117,8 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     );
 
     CertRSA256Verify(maxMessageLength, n, k)(
-        user_cert, 
-        user_cert_length, 
+        issuer_tbs, 
+        issuer_tbs_length, 
         issuer_rsa_modulus, 
         issuer_rsa_signature
     );

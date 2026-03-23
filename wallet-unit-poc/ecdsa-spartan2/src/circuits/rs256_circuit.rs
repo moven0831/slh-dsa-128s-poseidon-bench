@@ -448,9 +448,9 @@ impl Rs256Circuit {
         serde_json::json!({
             "tbs": user_circuit_input.message,
             "tbs_length": user_circuit_input.message_length,
-            "user_cert": issuer_circuit_input.message,
-            "user_cert_length": issuer_circuit_input.message_length,
-            "issuer_tbs_length": issuer_tbs.len(),
+            "issuer_tbs": issuer_circuit_input.message,
+            "issuer_tbs_length": issuer_circuit_input.message_length,
+            "actual_issuer_tbs_length": issuer_tbs.len(),
             "user_cert_zero_padded": zero_pad(&user_cert_der),
             "actual_user_cert_length": user_cert_der.len(),
             "user_modulus_offset": user_offsets.modulus_offset,
