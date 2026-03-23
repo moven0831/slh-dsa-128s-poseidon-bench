@@ -468,31 +468,31 @@ impl Rs256Circuit {
     }
 
     fn parse_cert_offsets(der: &[u8]) -> CertOffsets {
-        let cert = Certificate::from_der(der).expect("Failed to parse certificate DER");
+        // let cert = Certificate::from_der(der).expect("Failed to parse certificate DER");
 
-        let tbs_offset = Self::find_tbs_offset(der);
-        println!("find_tbs_offset = {}", Self::find_tbs_offset(der));
-        let tbs_der = cert.tbs_certificate.to_der().unwrap();
-        let tbs_length = tbs_der.len();
+        // let tbs_offset = Self::find_tbs_offset(der);
+        // println!("find_tbs_offset = {}", Self::find_tbs_offset(der));
+        // let tbs_der = cert.tbs_certificate.to_der().unwrap();
+        // let tbs_length = tbs_der.len();
 
-        let subject_der = cert.tbs_certificate.subject.to_der().unwrap();
-        let subject_offset =
-            Self::find_subslice(der, &subject_der).expect("Subject not found in cert DER");
-        let subject_length = subject_der.len();
+        // let subject_der = cert.tbs_certificate.subject.to_der().unwrap();
+        // let subject_offset =
+        //     Self::find_subslice(der, &subject_der).expect("Subject not found in cert DER");
+        // let subject_length = subject_der.len();
 
         let (modulus_offset, modulus_tag_offset) = Self::find_modulus_offset(der);
 
-        // ── Sanity checks ─────────────────────────────────────────────────────
-        assert_eq!(
-            der[tbs_offset], 0x30,
-            "TBS tag wrong at {}: got 0x{:02x}",
-            tbs_offset, der[tbs_offset]
-        );
-        assert_eq!(
-            der[subject_offset], 0x30,
-            "Subject tag wrong at {}: got 0x{:02x}",
-            subject_offset, der[subject_offset]
-        );
+        // // ── Sanity checks ─────────────────────────────────────────────────────
+        // assert_eq!(
+        //     der[tbs_offset], 0x30,
+        //     "TBS tag wrong at {}: got 0x{:02x}",
+        //     tbs_offset, der[tbs_offset]
+        // );
+        // assert_eq!(
+        //     der[subject_offset], 0x30,
+        //     "Subject tag wrong at {}: got 0x{:02x}",
+        //     subject_offset, der[subject_offset]
+        // );
         assert_eq!(
             der[modulus_tag_offset], 0x02,
             "Modulus INTEGER tag wrong at {}: got 0x{:02x}",
@@ -516,14 +516,14 @@ impl Rs256Circuit {
     // X.509 DER layout:
     //   30 82 XX XX        SEQUENCE (Certificate)      ← outer, 4 bytes
     //     30 82 YY YY      SEQUENCE (TBSCertificate)   ← starts at byte 4
-    fn find_tbs_offset(der: &[u8]) -> usize {
-        // Outer SEQUENCE tag(1) + length field
-        let mut pos = 1usize; // skip 0x30 tag
-        let (_, lb) = Self::read_der_len(der, pos);
-        pos += lb;
-        // pos now points to start of TBSCertificate SEQUENCE
-        pos
-    }
+    // fn find_tbs_offset(der: &[u8]) -> usize {
+    //     // Outer SEQUENCE tag(1) + length field
+    //     let mut pos = 1usize; // skip 0x30 tag
+    //     let (_, lb) = Self::read_der_len(der, pos);
+    //     pos += lb;
+    //     // pos now points to start of TBSCertificate SEQUENCE
+    //     pos
+    // }
 
     // ── Modulus offset ────────────────────────────────────────────────────────
     // Returns (modulus_value_offset, integer_tag_offset)
