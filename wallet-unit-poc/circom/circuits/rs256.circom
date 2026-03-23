@@ -84,7 +84,6 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input issuer_tbs_length;                // actual issuer TBS length
     signal input user_cert_zero_padded[maxMessageLength];    // user cert certificate bytes zero padded
     signal input actual_user_cert_length;         // actual user certificate length
-    signal input user_rsa_modulus[k]; // user's RSA public key
     signal input user_rsa_signature[k];                // certificate signature
      // These are the "parse SPKI" hints the prover supplies:
     signal input user_modulus_offset;      // where modulus bytes start

@@ -455,7 +455,6 @@ impl Rs256Circuit {
             "actual_user_cert_length": user_cert_der.len(),
             "user_modulus_offset": user_offsets.modulus_offset,
             "user_modulus_tag_offset": user_offsets.modulus_tag_offset,
-            "user_rsa_modulus": user_circuit_input.rsa_modulus,
             "user_rsa_signature": user_circuit_input.rsa_signature,
             "issuer_rsa_modulus": issuer_circuit_input.rsa_modulus,
             "issuer_rsa_signature": issuer_circuit_input.rsa_signature,
