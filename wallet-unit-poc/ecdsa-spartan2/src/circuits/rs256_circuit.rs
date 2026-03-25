@@ -69,6 +69,19 @@ struct CardSignResponse {
     _version: String,
 }
 
+struct RS256CircuitInput {
+    message: Vec<String>,
+    message_length: usize,
+    rsa_modulus: Vec<String>,
+    rsa_signature: Vec<String>,
+}
+
+#[derive(Debug)]
+struct CertOffsets {
+    pub modulus_offset: usize, // first real modulus byte (after sign byte)
+    pub modulus_tag_offset: usize, // where 0x02 INTEGER tag is
+}
+
 impl Default for Rs256Circuit {
     fn default() -> Self {
         Self {
@@ -138,6 +151,35 @@ impl Rs256Circuit {
         Ok(())
     }
 
+    fn verify_issuer_signature(
+        issuer_cert: &Certificate,
+        user_cert: &Certificate, // ← add user cert parameter
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // 1. Extract issuer's RSA public key
+        let spki_der = issuer_cert
+            .tbs_certificate
+            .subject_public_key_info
+            .to_der()?;
+        let rsa_pub = RsaPublicKey::from_public_key_der(&spki_der)?;
+        println!("Issuer RSA key size: {} bits", rsa_pub.n().bits());
+
+        // 2. Get the signature from the USER cert
+        //    (this is MOICA's signature over the user's TBS)
+        let sig_bytes = user_cert.signature.raw_bytes();
+        let sig = rsa::pkcs1v15::Signature::try_from(sig_bytes)?;
+
+        // 3. Get the TBS from the USER cert
+        //    (this is what MOICA signed)
+        let user_tbs_der = user_cert.tbs_certificate.to_der()?;
+
+        // 4. Verify issuer signed the user cert's TBS
+        let verifying_key = VerifyingKey::<Sha256>::new(rsa_pub);
+        verifying_key.verify(&user_tbs_der, &sig)?;
+
+        println!("✅ Issuer signature valid: MOICA signed the user cert");
+        Ok(())
+    }
+
     pub fn generate_input_from_response(
         response_path: &PathBuf,
         tbs: &[u8],
@@ -147,6 +189,44 @@ impl Rs256Circuit {
     ) {
         let response_string = std::fs::read_to_string(response_path).unwrap();
         let response: CardSignResponse = serde_json::from_str(&response_string).unwrap();
+
+        let issuer_cert_b64 = "MIIFKDCCAxCgAwIBAgIQUcO1wamhWIYJIiIx1hrArTANBgkqhkiG9w0BAQsFADA/MQswCQYDVQQGEwJUVzEwMC4GA1UECgwnR292ZXJubWVudCBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5MB4XDTE0MDEwMjA2MzEwNFoXDTM0MDEwMjA2MzEwNFowRzELMAkGA1UEBhMCVFcxEjAQBgNVBAoMCeihjOaUv+mZojEkMCIGA1UECwwb5YWn5pS/6YOo5oaR6K2J566h55CG5Lit5b+DMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn9gInAVVnWPVqzS8XfaF+10vRLo3ulZAI4sAYxrOcFCTNQnQ+bZzb/6iqWgg4fvAxbIbMZfhbQ01eihjledeZEAvN66P/87iSBwiplWESeE1LrKEQkot4ic2F/YKXU9/u2Vk8ek6pQzoxNMNg5BACTYqAWC13VPoGPiPNErxLphj5VJopMgboiCUETh1UYy/TVAZUIHWMKpALi+eqThHJc+oJ1Qju0C715zdnRI3HQYkuFoF9vYiOSLJgVUeqJ538E3z4iuTUZ+jcohxfSFGt4e3hwPVqn/xhn+cYI8gbpxqOfAMLyv/+REKhb8Vwl2uILOKf29aEgJtCKHLxoEpHQIDAQABo4IBFjCCARIwHwYDVR0jBBgwFoAU1Wcd4Jx6LJzLxZjnHQcmKobsdM0wHQYDVR0OBBYEFPqbNGcJCpgi92JIi4ImpkXFwyKkMA4GA1UdDwEB/wQEAwIBBjAUBgNVHSAEDTALMAkGB2CGdmUAAwMwEgYDVR0TAQH/BAgwBgEB/wIBADA+BgNVHR8ENzA1MDOgMaAvhi1odHRwOi8vZ3JjYS5uYXQuZ292LnR3L3JlcG9zaXRvcnkvQ1JMMi9DQS5jcmwwVgYIKwYBBQUHAQEESjBIMEYGCCsGAQUFBzAChjpodHRwOi8vZ3JjYS5uYXQuZ292LnR3L3JlcG9zaXRvcnkvQ2VydHMvSXNzdWVkVG9UaGlzQ0EucDdiMA0GCSqGSIb3DQEBCwUAA4ICAQAYjLOx0ErTqE8Yul0WIRw7yl7UPy23z1xNn2lhs022lpTSWA8ebx3fATUnSPx6oBiGoxG8U/x+NV5DgUy7qenxXHscgOVZVpf7avGcrq8FYrZ0nRGmMCRC30lELnrrH7C9H8YTVZymh2Ovg2jtJHupvmvb43AV9T68T/739lmSkaw7/tu+Ea3Wtxlunzw++5ameC/UZ/1LN0qt/ImKlxBIhXmJbhrHGl20bQp3ZfvGtQ8n03rJtX6dbN2U+JQO4LMcY/3T6Q1sPy2KLA0f2sW4oUM13g8UCIQvhV029DKL3rkDL9xzUHfKBjD9LGDHgdzZ7FszBpFwWEEhsGZx5ZQgFexauozom2lfxSLyZRprWySpMCRlqhU/Vgmx4DwXwWimqH/gtD6cK9+88lcMqhC2d+Jy6D2OrhSbMMW5chfDW6BETxUBXQRBQ6pG8FfWH+f1WN2jytWvymqmvR31e8XsxUa3oOQUTO+NcKBkI3iH7DMR9N5PWwA5OVTrunAl8eC3cb9ZdIG6j27xMjNck46fYAIIp3uqyK1MTC6Z6e8yygL1pSW7/whNWL/4gp0EFyMkx7M1V8QmqYNaeVbRVFjDGZ30qh2Osr4mtEPImvHZFX8Sv0keMYemH9oLqyxYzhsb40XCWNzYC0RS73kTcXATtetNSsXzrxLfbno09jQHsg==";
+        let issuer_cert = Certificate::from_der(
+            &base64::engine::general_purpose::STANDARD
+                .decode(&issuer_cert_b64)
+                .unwrap(),
+        )
+        .unwrap();
+        let issuer_cert_tbs = &issuer_cert.tbs_certificate;
+        let issuer_cert_subject_cn = Self::get_attr(&issuer_cert_tbs.subject, COMMON_NAME);
+        let issuer_cert_subject_org = Self::get_attr(&issuer_cert_tbs.subject, ORGANIZATION_NAME);
+        let issuer_cert_subject_country = Self::get_attr(&issuer_cert_tbs.subject, COUNTRY_NAME);
+        let issuer_cert_subject_serial = Self::get_attr(&issuer_cert_tbs.subject, SERIAL_NUMBER);
+        let issuer_cert_issuer_cn = Self::get_attr(&issuer_cert_tbs.issuer, COMMON_NAME);
+        let issuer_cert_issuer_org = Self::get_attr(&issuer_cert_tbs.issuer, ORGANIZATION_NAME);
+        let issuer_cert_issuer_ou =
+            Self::get_attr(&issuer_cert_tbs.issuer, ORGANIZATIONAL_UNIT_NAME);
+        let issuer_cert_issuer_country = Self::get_attr(&issuer_cert_tbs.issuer, COUNTRY_NAME);
+        let issuer_cert_not_before = issuer_cert_tbs.validity.not_before;
+        let issuer_cert_not_after = issuer_cert_tbs.validity.not_after;
+        let issuer_cert_serial = issuer_cert_tbs.serial_number.as_bytes();
+        let issuer_cert_serial_hex = hex::encode(issuer_cert_serial);
+        let issuer_cert_version = issuer_cert_tbs.version;
+        println!("issuer_cert_subject_cn: {}", issuer_cert_subject_cn);
+        println!("issuer_cert_subject_org: {}", issuer_cert_subject_org);
+        println!(
+            "issuer_cert_subject_country: {}",
+            issuer_cert_subject_country
+        );
+        println!("issuer_cert_subject_serial: {}", issuer_cert_subject_serial);
+        println!("issuer_cert_issuer_cn: {}", issuer_cert_issuer_cn);
+        println!("issuer_cert_issuer_org: {}", issuer_cert_issuer_org);
+        println!("issuer_cert_issuer_ou: {}", issuer_cert_issuer_ou);
+        println!("issuer_cert_issuer_country: {}", issuer_cert_issuer_country);
+        println!("issuer_cert_not_before: {:?}", issuer_cert_not_before);
+        println!("issuer_cert_not_after: {:?}", issuer_cert_not_after);
+        println!("issuer_cert_serial: {}", issuer_cert_serial_hex);
+        println!("issuer_cert_version: {:?}", issuer_cert_version);
 
         // Decode base64
         let raw_bytes = base64::engine::general_purpose::STANDARD
@@ -192,7 +272,10 @@ impl Rs256Circuit {
 
         // === Public Key Info ===
         let _pub_key_alg = cert_tbs.subject_public_key_info.algorithm.oid.to_string();
-        let pub_key_bytes = cert_tbs.subject_public_key_info.subject_public_key.raw_bytes();
+        let pub_key_bytes = cert_tbs
+            .subject_public_key_info
+            .subject_public_key
+            .raw_bytes();
         let pub_key_bit_len = pub_key_bytes.len() * 8;
 
         // === Signature ===
@@ -239,25 +322,10 @@ impl Rs256Circuit {
         println!("TBS size: {} bytes", tbs_der.len());
         println!("Signature size: {} bytes", signature_bytes.len());
 
-        let issuer_cn = cert
-            .tbs_certificate
-            .issuer
-            .0
-            .iter()
-            .flat_map(|rdn| rdn.0.iter())
-            .find(|attr| attr.oid == ORGANIZATION_NAME)
-            .map(|attr| 
-            // Try UTF8String first, then PrintableString
-                if let Ok(s) = Utf8StringRef::try_from(&attr.value) {
-                    s.as_str().to_string()
-                } else if let Ok(s) = PrintableStringRef::try_from(&attr.value) {
-                    s.as_str().to_string()
-                } else {    
-                    String::from_utf8_lossy(attr.value.value()).to_string()
-                }
-            )
-            .unwrap_or_default();
-        println!("issuer_cn: {}", issuer_cn);
+        match Self::verify_issuer_signature(&issuer_cert, &cert) {
+            Ok(()) => println!("✅ MOICA signed the user cert"),
+            Err(e) => println!("❌ Issuer verification failed: {}", e),
+        }
 
         // Verify signature first
         match Self::verify_card_signature(&response, tbs) {
@@ -270,8 +338,14 @@ impl Rs256Circuit {
             println!("Fetching SMT proof from {}...", server_url);
             match crate::smt_client::fetch_smt_proof(server_url, issuer, &serial_hex, 128) {
                 Ok(inputs) => {
-                    println!("  SMT root: {}...", &inputs.smt_root[..20.min(inputs.smt_root.len())]);
-                    println!("  Serial (decimal): {}...", &inputs.serial_number[..20.min(inputs.serial_number.len())]);
+                    println!(
+                        "  SMT root: {}...",
+                        &inputs.smt_root[..20.min(inputs.smt_root.len())]
+                    );
+                    println!(
+                        "  Serial (decimal): {}...",
+                        &inputs.serial_number[..20.min(inputs.serial_number.len())]
+                    );
                     println!("  isOld0: {}", inputs.smt_is_old0);
                     Some(inputs)
                 }
@@ -285,31 +359,34 @@ impl Rs256Circuit {
         };
 
         // Generate circuit input
-        let circuit_input = Self::generate_circuit_input(&response, tbs, smt_inputs.as_ref());
+        let circuit_input = Self::generate_circuit_input(
+            &cert,
+            &issuer_cert,
+            &response.signature,
+            &base64::engine::general_purpose::STANDARD.encode(cert.signature.raw_bytes()),
+            &tbs,
+            &tbs_der,
+            smt_inputs.as_ref(),
+        );
+
         std::fs::write(
             output_path,
             serde_json::to_string_pretty(&circuit_input).unwrap(),
         )
         .unwrap();
         println!("Circuit input written to {}", output_path);
-
-
     }
 
-    fn generate_circuit_input(
-        response: &CardSignResponse,
+    fn generate_rsa_circuit_input(
+        cert: &Certificate,
+        signature: &str,
         original_data: &[u8],
-        smt_inputs: Option<&crate::smt_client::SmtCircuitInputs>,
-    ) -> serde_json::Value {
+    ) -> RS256CircuitInput {
         const MAX_MESSAGE_LENGTH: usize = 1536;
         const RSA_N: usize = 121;
         const RSA_K: usize = 17;
 
         // 1. Parse cert and extract RSA public key
-        let cert_der = base64::engine::general_purpose::STANDARD
-            .decode(&response.certb64)
-            .unwrap();
-        let cert = Certificate::from_der(&cert_der).unwrap();
         let spki_der = cert
             .tbs_certificate
             .subject_public_key_info
@@ -321,7 +398,7 @@ impl Rs256Circuit {
 
         // 2. Decode and chunk signature
         let sig_bytes = base64::engine::general_purpose::STANDARD
-            .decode(&response.signature)
+            .decode(signature)
             .unwrap();
         let sig_biguint = BigUint::from_bytes_be(&sig_bytes);
         let rsa_signature = Self::bigint_to_chunks(&sig_biguint, RSA_K, RSA_N);
@@ -330,24 +407,242 @@ impl Rs256Circuit {
         let message = Self::sha256_pad(original_data, MAX_MESSAGE_LENGTH);
         let padded_len = Self::sha256_padded_length(original_data.len());
 
-        let mut input = serde_json::json!({
-            "message": message.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
-            "messageLength": padded_len.to_string(),
-            "rsaModulus": rsa_modulus,
-            "rsaSignature": rsa_signature,
-        });
+        RS256CircuitInput {
+            message: message.iter().map(|b| b.to_string()).collect::<Vec<_>>(),
+            message_length: padded_len,
+            rsa_modulus: rsa_modulus,
+            rsa_signature: rsa_signature,
+        }
+    }
 
-        if let Some(smt) = smt_inputs {
-            let obj = input.as_object_mut().unwrap();
-            obj.insert("smtRoot".to_string(), serde_json::json!(smt.smt_root));
-            obj.insert("serialNumber".to_string(), serde_json::json!(smt.serial_number));
-            obj.insert("smtSiblings".to_string(), serde_json::json!(smt.smt_siblings));
-            obj.insert("smtOldKey".to_string(), serde_json::json!(smt.smt_old_key));
-            obj.insert("smtOldValue".to_string(), serde_json::json!(smt.smt_old_value));
-            obj.insert("smtIsOld0".to_string(), serde_json::json!(smt.smt_is_old0));
+    fn generate_circuit_input(
+        user_cert: &Certificate,
+        issuer_cert: &Certificate,
+        user_signature: &str,
+        issuer_signature: &str,
+        user_tbs: &[u8],
+        issuer_tbs: &[u8],
+        smt_inputs: Option<&crate::smt_client::SmtCircuitInputs>,
+    ) -> serde_json::Value {
+        const MAX_MESSAGE_LENGTH: usize = 1536;
+        let zero_pad = |bytes: &[u8]| -> Vec<u64> {
+            assert!(
+                bytes.len() <= MAX_MESSAGE_LENGTH,
+                "too large: {} > {}",
+                bytes.len(),
+                MAX_MESSAGE_LENGTH
+            );
+            let mut v: Vec<u64> = bytes.iter().map(|&b| b as u64).collect();
+            v.resize(MAX_MESSAGE_LENGTH, 0);
+            v
+        };
+
+        let user_circuit_input =
+            Self::generate_rsa_circuit_input(user_cert, user_signature, user_tbs);
+        let issuer_circuit_input =
+            Self::generate_rsa_circuit_input(issuer_cert, issuer_signature, issuer_tbs);
+        let user_cert_der = user_cert.to_der().unwrap();
+        let user_offsets = Self::parse_cert_offsets(&user_cert_der);
+
+
+        serde_json::json!({
+            "tbs": user_circuit_input.message,
+            "tbs_length": user_circuit_input.message_length,
+            "issuer_tbs": issuer_circuit_input.message,
+            "issuer_tbs_length": issuer_circuit_input.message_length,
+            "actual_issuer_tbs_length": issuer_tbs.len(),
+            "user_cert_zero_padded": zero_pad(&user_cert_der),
+            "actual_user_cert_length": user_cert_der.len(),
+            "user_modulus_offset": user_offsets.modulus_offset,
+            "user_modulus_tag_offset": user_offsets.modulus_tag_offset,
+            "user_rsa_signature": user_circuit_input.rsa_signature,
+            "issuer_rsa_modulus": issuer_circuit_input.rsa_modulus,
+            "issuer_rsa_signature": issuer_circuit_input.rsa_signature,
+            "smtRoot": smt_inputs.unwrap().smt_root,
+            "serialNumber": smt_inputs.unwrap().serial_number,
+            "smtSiblings": smt_inputs.unwrap().smt_siblings,
+            "smtOldKey": smt_inputs.unwrap().smt_old_key,
+            "smtOldValue": smt_inputs.unwrap().smt_old_value,
+            "smtIsOld0": smt_inputs.unwrap().smt_is_old0,
+        })
+    }
+
+    fn parse_cert_offsets(der: &[u8]) -> CertOffsets {
+        // let cert = Certificate::from_der(der).expect("Failed to parse certificate DER");
+
+        // let tbs_offset = Self::find_tbs_offset(der);
+        // println!("find_tbs_offset = {}", Self::find_tbs_offset(der));
+        // let tbs_der = cert.tbs_certificate.to_der().unwrap();
+        // let tbs_length = tbs_der.len();
+
+        // let subject_der = cert.tbs_certificate.subject.to_der().unwrap();
+        // let subject_offset =
+        //     Self::find_subslice(der, &subject_der).expect("Subject not found in cert DER");
+        // let subject_length = subject_der.len();
+
+        let (modulus_offset, modulus_tag_offset) = Self::find_modulus_offset(der);
+
+        // // ── Sanity checks ─────────────────────────────────────────────────────
+        // assert_eq!(
+        //     der[tbs_offset], 0x30,
+        //     "TBS tag wrong at {}: got 0x{:02x}",
+        //     tbs_offset, der[tbs_offset]
+        // );
+        // assert_eq!(
+        //     der[subject_offset], 0x30,
+        //     "Subject tag wrong at {}: got 0x{:02x}",
+        //     subject_offset, der[subject_offset]
+        // );
+        assert_eq!(
+            der[modulus_tag_offset], 0x02,
+            "Modulus INTEGER tag wrong at {}: got 0x{:02x}",
+            modulus_tag_offset, der[modulus_tag_offset]
+        );
+
+        println!("modulus_tag_offset: {}", modulus_tag_offset);
+        println!("modulus_offset:     {}", modulus_offset);
+        println!(
+            "gap tag→value:      {}",
+            modulus_offset - modulus_tag_offset
+        );
+
+        CertOffsets {
+            modulus_offset,
+            modulus_tag_offset,
+        }
+    }
+
+    // ── TBS offset ────────────────────────────────────────────────────────────
+    // X.509 DER layout:
+    //   30 82 XX XX        SEQUENCE (Certificate)      ← outer, 4 bytes
+    //     30 82 YY YY      SEQUENCE (TBSCertificate)   ← starts at byte 4
+    // fn find_tbs_offset(der: &[u8]) -> usize {
+    //     // Outer SEQUENCE tag(1) + length field
+    //     let mut pos = 1usize; // skip 0x30 tag
+    //     let (_, lb) = Self::read_der_len(der, pos);
+    //     pos += lb;
+    //     // pos now points to start of TBSCertificate SEQUENCE
+    //     pos
+    // }
+
+    // ── Modulus offset ────────────────────────────────────────────────────────
+    // Returns (modulus_value_offset, integer_tag_offset)
+    fn find_modulus_offset(der: &[u8]) -> (usize, usize) {
+        let cert = Certificate::from_der(der).unwrap();
+        let spki_der = cert
+            .tbs_certificate
+            .subject_public_key_info
+            .to_der()
+            .unwrap();
+
+        // Find ALL occurrences to detect ambiguity
+        let occurrences: Vec<usize> = der
+            .windows(spki_der.len())
+            .enumerate()
+            .filter(|(_, w)| *w == spki_der.as_slice())
+            .map(|(i, _)| i)
+            .collect();
+
+        println!("SPKI occurrences in cert: {:?}", occurrences);
+        assert_eq!(
+            occurrences.len(),
+            1,
+            "Expected exactly 1 SPKI occurrence, found {}",
+            occurrences.len()
+        );
+
+        // Find where SPKI starts in the full cert DER
+        let spki_abs = Self::find_subslice(der, &spki_der).expect("SPKI not found in cert DER");
+
+        let mut pos = 0usize;
+
+        // Skip outer SPKI SEQUENCE tag + length
+        pos += 1;
+        let (_, lb) = Self::read_der_len(&spki_der, pos);
+        pos += lb;
+
+        // Skip AlgorithmIdentifier SEQUENCE tag + length + content
+        pos += 1;
+        let (alg_len, alb) = Self::read_der_len(&spki_der, pos);
+        pos += alb + alg_len;
+
+        // Skip BIT STRING tag + length + unused-bits byte (0x00)
+        pos += 1;
+        let (_, blb) = Self::read_der_len(&spki_der, pos);
+        pos += blb;
+        pos += 1; // unused bits byte
+
+        // Skip RSAPublicKey SEQUENCE tag + length
+        pos += 1;
+        let (_, slb) = Self::read_der_len(&spki_der, pos);
+        pos += slb;
+
+        // Now at INTEGER tag for modulus
+        assert_eq!(
+            spki_der[pos], 0x02,
+            "Expected INTEGER tag at spki pos {}, got 0x{:02x}",
+            pos, spki_der[pos]
+        );
+        let tag_pos = pos; // record tag position
+        pos += 1; // skip tag
+
+        // Skip length field (1 byte short form or 3 bytes long form for RSA-2048)
+        let (mod_len, mlb) = Self::read_der_len(&spki_der, pos);
+        pos += mlb;
+
+        println!(
+            "modulus DER length field: {} bytes, value: {}",
+            mlb, mod_len
+        );
+
+        // Skip leading 0x00 sign byte if present
+        // RSA-2048 modulus MSB is usually set → DER adds 0x00 to keep it positive
+        if spki_der[pos] == 0x00 {
+            println!("skipping sign byte at spki pos {}", pos);
+            pos += 1;
         }
 
-        input
+        let modulus_offset = spki_abs + pos;
+        let tag_offset = spki_abs + tag_pos;
+
+        // Final validation
+        assert_eq!(
+            der[tag_offset], 0x02,
+            "Final check: der[{}] = 0x{:02x}, expected 0x02",
+            tag_offset, der[tag_offset]
+        );
+        assert!(
+            modulus_offset > tag_offset,
+            "modulus_offset {} must be > tag_offset {}",
+            modulus_offset,
+            tag_offset
+        );
+
+        (modulus_offset, tag_offset)
+    }
+
+    // ── DER helpers ───────────────────────────────────────────────────────────
+
+    /// Returns (length_value, bytes_consumed_by_length_field)
+    fn read_der_len(der: &[u8], pos: usize) -> (usize, usize) {
+        if der[pos] & 0x80 == 0 {
+            // Short form: single byte
+            (der[pos] as usize, 1)
+        } else {
+            // Long form: first byte = 0x80 | num_following_bytes
+            let num_len_bytes = (der[pos] & 0x7f) as usize;
+            let value =
+                (0..num_len_bytes).fold(0usize, |acc, i| (acc << 8) | der[pos + 1 + i] as usize);
+            (value, 1 + num_len_bytes)
+        }
+    }
+
+    /// Find first occurrence of needle in haystack, return start index
+    fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        if needle.is_empty() {
+            return Some(0);
+        }
+        haystack.windows(needle.len()).position(|w| w == needle)
     }
 
     fn bigint_to_chunks(n: &BigUint, count: usize, chunk_bits: usize) -> Vec<String> {

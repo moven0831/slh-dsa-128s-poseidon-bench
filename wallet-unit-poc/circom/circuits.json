@@ -7,8 +7,8 @@
   },
   "rs256": {
     "file": "rs256",
-    "template": "CertRSA256VerifyWithRevocation",
-    "params": [1536, 121, 17, 128],
-    "pubs": ["rsaModulus", "smtRoot", "serialNumber"]
+    "template": "FullCertRSA256VerifyWithRevocation",
+    "params": [1536, 121, 17, 2048, 128],
+    "pubs": ["issuer_rsa_modulus", "smtRoot", "serialNumber"]
   }
 }
