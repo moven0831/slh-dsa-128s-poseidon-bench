@@ -335,6 +335,69 @@ template VerifySubjectDN(MAX_CERT_LEN, MAX_SUBJECT_LEN) {
         (cert_byte[i] - subject_dn[i]) * isLt[i].out === 0;
     }
 }
+
+// Extracts bytes at [offset .. offset+length] and reconstructs
+// them as a big-endian integer, then checks it equals target
+template VerifySerialNumber(MAX_CERT_LEN, MAX_SERIAL_LEN) {
+    signal input cert[MAX_CERT_LEN];
+    signal input offset;
+    signal input length;
+    signal input target;
+
+    // Step 1: extract bytes (same as before)
+    component isEq[MAX_SERIAL_LEN][MAX_CERT_LEN];
+    signal selected[MAX_SERIAL_LEN][MAX_CERT_LEN];
+    signal sums[MAX_SERIAL_LEN][MAX_CERT_LEN + 1];
+    signal raw_bytes[MAX_SERIAL_LEN];
+
+    for (var i = 0; i < MAX_SERIAL_LEN; i++) {
+        sums[i][0] <== 0;
+        for (var j = 0; j < MAX_CERT_LEN; j++) {
+            isEq[i][j] = IsEqual();
+            isEq[i][j].in[0] <== j;
+            isEq[i][j].in[1] <== offset + i;
+            selected[i][j] <== cert[j] * isEq[i][j].out;
+            sums[i][j+1] <== sums[i][j] + selected[i][j];
+        }
+        raw_bytes[i] <== sums[i][MAX_CERT_LEN];
+    }
+
+    // Step 2: reconstruct big-endian integer using COMPILE-TIME powers of 256
+    // value = sum of raw_bytes[i] * 256^(length-1-i)  for i in 0..length
+    //
+    // Since length is dynamic, use isLt mask:
+    // value = sum of raw_bytes[i] * 256^(MAX_SERIAL_LEN-1-i) * isLt[i]
+    // then divide by 256^(MAX_SERIAL_LEN-length) at the end
+    //
+    // SIMPLER: use compile-time powers from LSB side:
+    // treat raw_bytes as little-endian by reversing, then:
+    // value = sum of raw_bytes[length-1-i] * 256^i
+    // but index is dynamic again...
+    //
+    // EASIEST: fixed-length with zero padding already handled by extraction
+    // raw_bytes[i] == 0 for i >= length (from ExtractSubjectDN masking)
+    // so just compute full sum with fixed powers:
+
+    // big-endian: value = b0*256^(N-1) + b1*256^(N-2) + ... + b(N-1)*256^0
+    // use compile-time var for powers
+    signal weighted[MAX_SERIAL_LEN];
+    var power = 1;
+    // compute from LSB (right) to MSB (left)
+    for (var i = MAX_SERIAL_LEN - 1; i >= 0; i--) {
+        weighted[i] <== raw_bytes[i] * power;
+        power = power * 256;
+    }
+
+    // sum all weighted bytes
+    signal total[MAX_SERIAL_LEN + 1];
+    total[0] <== 0;
+    for (var i = 0; i < MAX_SERIAL_LEN; i++) {
+        total[i+1] <== total[i] + weighted[i];
+    }
+
+    total[MAX_SERIAL_LEN] === target;
+}
+
 /// @title ExtractModulus
 /// @notice Extracts an RSA public key modulus from a DER-encoded certificate
 /// @dev    SubjectPublicKeyInfo layout:

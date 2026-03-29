@@ -1845,6 +1845,8 @@
   ],
   "subject_dn_length": 62,
   "subject_dn_offset": 151,
+  "subject_number_length": 16,
+  "subject_number_offset": 15,
   "tbs": [
     "49",
     "50",
