@@ -88,6 +88,10 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
      // These are the "parse SPKI" hints the prover supplies:
     signal input user_modulus_offset;      // where modulus bytes start
     signal input user_modulus_tag_offset;  // where 0x02 INTEGER tag is
+    
+    signal input subject_dn[maxMessageLength];
+    signal input subject_dn_offset;
+    signal input subject_dn_length;
 
     signal input issuer_rsa_modulus[k];                  // issuer's RSA public key
     signal input issuer_rsa_signature[k];                // certificate signature
@@ -101,6 +105,13 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input smtIsOld0;
 
     VerifyTBSinCert(maxMessageLength, maxMessageLength)(user_cert_zero_padded, issuer_tbs, actual_issuer_tbs_length);
+
+    VerifySubjectDN(maxMessageLength)(
+        user_cert_zero_padded,
+        subject_dn,
+        subject_dn_offset,
+        subject_dn_length
+    );
 
     signal user_rsa_extracted_modulus[k];
     ExtractModulus(maxMessageLength, n, k, modulusBits)(

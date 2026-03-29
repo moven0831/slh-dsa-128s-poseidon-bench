@@ -301,6 +301,41 @@ template VerifyTBSinCert(MAX_CERT_LEN, MAX_TBS_LEN) {
     }
 }
 
+template VerifySubjectDN(MAX_CERT_LEN) {
+    var MAX_SUBJECT_LEN = 62; // TODO: check this
+    signal input cert[MAX_CERT_LEN];
+    signal input subject_dn[MAX_CERT_LEN];
+    signal input subject_dn_offset;
+    signal input length;
+
+    // Step 1: extract cert[subject_dn_offset + i] for each i
+    // One selector per output byte — O(MAX_SUBJECT_LEN * MAX_CERT_LEN)
+    // but MAX_SUBJECT_LEN is small (~100) so total is manageable
+
+    signal selected[MAX_SUBJECT_LEN][MAX_CERT_LEN];
+    signal sums[MAX_SUBJECT_LEN][MAX_CERT_LEN + 1];
+    signal cert_byte[MAX_SUBJECT_LEN];
+    component isEq[MAX_SUBJECT_LEN][MAX_CERT_LEN];
+    component isLt[MAX_SUBJECT_LEN];
+
+    for (var i = 0; i < MAX_SUBJECT_LEN; i++) {
+        sums[i][0] <== 0;
+        for (var j = 0; j < MAX_CERT_LEN; j++) {
+            isEq[i][j] = IsEqual();
+            isEq[i][j].in[0] <== j;
+            isEq[i][j].in[1] <== subject_dn_offset + i;  // target index
+            selected[i][j] <== cert[j] * isEq[i][j].out;
+            sums[i][j+1] <== sums[i][j] + selected[i][j];
+        }
+        cert_byte[i] <== sums[i][MAX_CERT_LEN];
+
+        // Step 2: enforce match only for i < length
+        isLt[i] = LessThan(12);
+        isLt[i].in[0] <== i;
+        isLt[i].in[1] <== length;
+        (cert_byte[i] - subject_dn[i]) * isLt[i].out === 0;
+    }
+}
 /// @title ExtractModulus
 /// @notice Extracts an RSA public key modulus from a DER-encoded certificate
 /// @dev    SubjectPublicKeyInfo layout:

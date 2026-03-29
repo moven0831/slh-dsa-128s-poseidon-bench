@@ -78,8 +78,10 @@ struct RS256CircuitInput {
 
 #[derive(Debug)]
 struct CertOffsets {
-    pub modulus_offset: usize, // first real modulus byte (after sign byte)
+    pub modulus_offset: usize,     // first real modulus byte (after sign byte)
     pub modulus_tag_offset: usize, // where 0x02 INTEGER tag is
+    pub subject_dn_offset: usize,  // where subject DN starts
+    pub subject_dn_length: usize,  // length of subject DN
 }
 
 impl Default for Rs256Circuit {
@@ -443,7 +445,7 @@ impl Rs256Circuit {
             Self::generate_rsa_circuit_input(issuer_cert, issuer_signature, issuer_tbs);
         let user_cert_der = user_cert.to_der().unwrap();
         let user_offsets = Self::parse_cert_offsets(&user_cert_der);
-
+        let user_subject_der = user_cert.tbs_certificate.subject.to_der().unwrap();
 
         serde_json::json!({
             "tbs": user_circuit_input.message,
@@ -455,6 +457,9 @@ impl Rs256Circuit {
             "actual_user_cert_length": user_cert_der.len(),
             "user_modulus_offset": user_offsets.modulus_offset,
             "user_modulus_tag_offset": user_offsets.modulus_tag_offset,
+            "subject_dn": zero_pad(&user_subject_der),
+            "subject_dn_offset": user_offsets.subject_dn_offset,
+            "subject_dn_length": user_offsets.subject_dn_length,
             "user_rsa_signature": user_circuit_input.rsa_signature,
             "issuer_rsa_modulus": issuer_circuit_input.rsa_modulus,
             "issuer_rsa_signature": issuer_circuit_input.rsa_signature,
@@ -468,17 +473,17 @@ impl Rs256Circuit {
     }
 
     fn parse_cert_offsets(der: &[u8]) -> CertOffsets {
-        // let cert = Certificate::from_der(der).expect("Failed to parse certificate DER");
+        let cert = Certificate::from_der(der).expect("Failed to parse certificate DER");
 
         // let tbs_offset = Self::find_tbs_offset(der);
         // println!("find_tbs_offset = {}", Self::find_tbs_offset(der));
         // let tbs_der = cert.tbs_certificate.to_der().unwrap();
         // let tbs_length = tbs_der.len();
 
-        // let subject_der = cert.tbs_certificate.subject.to_der().unwrap();
-        // let subject_offset =
-        //     Self::find_subslice(der, &subject_der).expect("Subject not found in cert DER");
-        // let subject_length = subject_der.len();
+        let subject_der = cert.tbs_certificate.subject.to_der().unwrap();
+        let subject_dn_offset =
+            Self::find_subslice(der, &subject_der).expect("Subject not found in cert DER");
+        let subject_dn_length = subject_der.len();
 
         let (modulus_offset, modulus_tag_offset) = Self::find_modulus_offset(der);
 
@@ -488,11 +493,11 @@ impl Rs256Circuit {
         //     "TBS tag wrong at {}: got 0x{:02x}",
         //     tbs_offset, der[tbs_offset]
         // );
-        // assert_eq!(
-        //     der[subject_offset], 0x30,
-        //     "Subject tag wrong at {}: got 0x{:02x}",
-        //     subject_offset, der[subject_offset]
-        // );
+        assert_eq!(
+            der[subject_dn_offset], 0x30,
+            "Subject tag wrong at {}: got 0x{:02x}",
+            subject_dn_offset, der[subject_dn_offset]
+        );
         assert_eq!(
             der[modulus_tag_offset], 0x02,
             "Modulus INTEGER tag wrong at {}: got 0x{:02x}",
@@ -501,6 +506,8 @@ impl Rs256Circuit {
 
         println!("modulus_tag_offset: {}", modulus_tag_offset);
         println!("modulus_offset:     {}", modulus_offset);
+        println!("subject_dn_offset: {}", subject_dn_offset);
+        println!("subject_dn_length: {}", subject_dn_length);
         println!(
             "gap tag→value:      {}",
             modulus_offset - modulus_tag_offset
@@ -509,6 +516,8 @@ impl Rs256Circuit {
         CertOffsets {
             modulus_offset,
             modulus_tag_offset,
+            subject_dn_offset,
+            subject_dn_length,
         }
     }
 
