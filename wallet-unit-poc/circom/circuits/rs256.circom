@@ -75,7 +75,7 @@ template CertRSA256Verify(maxMessageLength, n, k) {
 /// @param k RSA chunks (17 for 2048-bit)
 /// @param modulusBits   Actual RSA key size in bits (e.g. 2048) — must be
 ///                      divisible by 8. Separate from n*k (e.g. 121*17=2057).
-template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits, smtDepth) {
+template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits, maxSubjectDNLength, smtDepth) {
     // === Inputs ===
     signal input tbs[maxMessageLength];    // TBS certificate bytes
     signal input tbs_length;                // actual TBS length
@@ -89,7 +89,7 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input user_modulus_offset;      // where modulus bytes start
     signal input user_modulus_tag_offset;  // where 0x02 INTEGER tag is
     
-    signal input subject_dn[maxMessageLength];
+    signal input subject_dn[maxSubjectDNLength];
     signal input subject_dn_offset;
     signal input subject_dn_length;
 
@@ -104,14 +104,18 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input smtOldValue;
     signal input smtIsOld0;
 
+    signal output subject_dn_hash;
+
     VerifyTBSinCert(maxMessageLength, maxMessageLength)(user_cert_zero_padded, issuer_tbs, actual_issuer_tbs_length);
 
-    VerifySubjectDN(maxMessageLength)(
+    VerifySubjectDN(maxMessageLength, maxSubjectDNLength)(
         user_cert_zero_padded,
         subject_dn,
         subject_dn_offset,
         subject_dn_length
     );
+
+    PoseidonBytes(maxSubjectDNLength)(subject_dn) ==> subject_dn_hash;
 
     signal user_rsa_extracted_modulus[k];
     ExtractModulus(maxMessageLength, n, k, modulusBits)(

@@ -354,16 +354,17 @@ impl Rs256Circuit {
         smt_inputs: Option<&crate::smt_client::SmtCircuitInputs>,
     ) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
         const MAX_MESSAGE_LENGTH: usize = 1536;
+        const MAX_SUBJECT_DN_LENGTH: usize = 128;
 
-        let zero_pad = |bytes: &[u8]| -> Vec<u64> {
+        let zero_pad = |bytes: &[u8], length: usize| -> Vec<u64> {
             assert!(
-                bytes.len() <= MAX_MESSAGE_LENGTH,
+                bytes.len() <= length,
                 "Certificate too large: {} > {}",
                 bytes.len(),
-                MAX_MESSAGE_LENGTH
+                length
             );
             let mut v: Vec<u64> = bytes.iter().map(|&b| b as u64).collect();
-            v.resize(MAX_MESSAGE_LENGTH, 0);
+            v.resize(length, 0);
             v
         };
 
@@ -411,11 +412,11 @@ impl Rs256Circuit {
             "issuer_tbs": issuer_input.message,
             "issuer_tbs_length": issuer_input.message_length,
             "actual_issuer_tbs_length": issuer_tbs.len(),
-            "user_cert_zero_padded": zero_pad(&user_cert_der),
+            "user_cert_zero_padded": zero_pad(&user_cert_der, MAX_MESSAGE_LENGTH),
             "actual_user_cert_length": user_cert_der.len(),
             "user_modulus_offset": user_offsets.modulus_offset,
             "user_modulus_tag_offset": user_offsets.modulus_tag_offset,
-            "subject_dn": zero_pad(&user_subject_der),
+            "subject_dn": zero_pad(&user_subject_der, MAX_SUBJECT_DN_LENGTH),
             "subject_dn_offset": user_offsets.subject_dn_offset,
             "subject_dn_length": user_offsets.subject_dn_length,
             "user_rsa_signature": user_input.rsa_signature,
@@ -678,7 +679,7 @@ impl SpartanCircuit<E> for Rs256Circuit {
 
     /// RS256 circuit public inputs
     fn public_values(&self) -> Result<Vec<Scalar>, SynthesisError> {
-        let num_public = 19; // 17 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber)
+        let num_public = 20; // 17 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber) + 1 (subjectDNHash)
         let witness = self.get_or_generate_witness().ok();
 
         let mut values = Vec::with_capacity(num_public);

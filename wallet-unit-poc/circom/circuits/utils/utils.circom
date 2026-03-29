@@ -301,10 +301,9 @@ template VerifyTBSinCert(MAX_CERT_LEN, MAX_TBS_LEN) {
     }
 }
 
-template VerifySubjectDN(MAX_CERT_LEN) {
-    var MAX_SUBJECT_LEN = 62; // TODO: check this
+template VerifySubjectDN(MAX_CERT_LEN, MAX_SUBJECT_LEN) {
     signal input cert[MAX_CERT_LEN];
-    signal input subject_dn[MAX_CERT_LEN];
+    signal input subject_dn[MAX_SUBJECT_LEN];
     signal input subject_dn_offset;
     signal input length;
 
@@ -452,4 +451,48 @@ template ExtractModulus(maxLen, n, k, modulusBits) {
         }
         out[i] <== b2n[i].out;
     }
+}
+
+template PackBytes(N_BYTES) {
+    // packs N_BYTES into ceil(N_BYTES/31) field elements
+    var BYTES_PER_FIELD = 31;
+    var N_FIELDS = (N_BYTES + BYTES_PER_FIELD - 1) \ BYTES_PER_FIELD;
+
+    signal input in[N_BYTES];
+    signal output out[N_FIELDS];
+
+    for (var f = 0; f < N_FIELDS; f++) {
+        var acc = 0;
+        var shift = 1;
+        for (var i = 0; i < BYTES_PER_FIELD; i++) {
+            var idx = f * BYTES_PER_FIELD + i;
+            if (idx < N_BYTES) {
+                acc = acc + in[idx] * shift;
+            }
+            shift = shift * 256;
+        }
+        out[f] <== acc;
+    }
+}
+
+template PoseidonBytes(N_BYTES) {
+    var BYTES_PER_FIELD = 31;
+    var N_FIELDS = (N_BYTES + BYTES_PER_FIELD - 1) \ BYTES_PER_FIELD;
+
+    signal input in[N_BYTES];
+    signal output out;
+
+    // step 1: pack bytes → field elements
+    component packer = PackBytes(N_BYTES);
+    for (var i = 0; i < N_BYTES; i++) {
+        packer.in[i] <== in[i];
+    }
+
+    // step 2: hash packed field elements
+    component hasher = Poseidon(N_FIELDS);
+    for (var f = 0; f < N_FIELDS; f++) {
+        hasher.inputs[f] <== packer.out[f];
+    }
+
+    out <== hasher.out;
 }
