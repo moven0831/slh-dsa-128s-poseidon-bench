@@ -172,6 +172,10 @@ fn main() {
                 eprintln!("Failed to read {}: {}", default_pkcs11, e);
                 process::exit(1);
             });
+            if !std::path::Path::new(default_sign).exists() {
+                eprintln!("Default sign file not found: {}", default_sign);
+                process::exit(1);
+            }
             let pkcs11info: Pkcs11InfoResponse =
                 serde_json::from_str(&pkcs11_string).unwrap_or_else(|e| {
                     eprintln!("Failed to parse pkcs11info: {}", e);
