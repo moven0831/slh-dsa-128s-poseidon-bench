@@ -109,8 +109,9 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
 
     signal output subject_dn_hash;
 
+    var MAX_TBS_BYTES = 31;
     var BYTES_PER_FIELD = 31;
-    var N_FIELDS = (maxMessageLength + BYTES_PER_FIELD - 1) \ BYTES_PER_FIELD;
+    var N_FIELDS = (MAX_TBS_BYTES + BYTES_PER_FIELD - 1) \ BYTES_PER_FIELD;
     signal output packed_tbs[N_FIELDS];
 
     VerifyTBSinCert(maxMessageLength, maxMessageLength)(user_cert_zero_padded, issuer_tbs, actual_issuer_tbs_length);
@@ -122,7 +123,7 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
         subject_dn_length
     );
 
-    PackBytes(maxMessageLength)(tbs) ==> packed_tbs;
+    PackBytes(MAX_TBS_BYTES, maxMessageLength)(tbs) ==> packed_tbs;
 
     var MAX_SERIAL_NUMBER_LEN = 16;
     VerifySerialNumber(maxMessageLength, MAX_SERIAL_NUMBER_LEN)(
