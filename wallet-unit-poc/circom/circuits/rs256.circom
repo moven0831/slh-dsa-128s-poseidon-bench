@@ -75,7 +75,7 @@ template CertRSA256Verify(maxMessageLength, n, k) {
 /// @param k RSA chunks (17 for 2048-bit)
 /// @param modulusBits   Actual RSA key size in bits (e.g. 2048) — must be
 ///                      divisible by 8. Separate from n*k (e.g. 121*17=2057).
-template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits, smtDepth) {
+template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits, maxSubjectDNLength, smtDepth) {
     // === Inputs ===
     signal input tbs[maxMessageLength];    // TBS certificate bytes
     signal input tbs_length;                // actual TBS length
@@ -88,6 +88,12 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
      // These are the "parse SPKI" hints the prover supplies:
     signal input user_modulus_offset;      // where modulus bytes start
     signal input user_modulus_tag_offset;  // where 0x02 INTEGER tag is
+    
+    signal input subject_dn[maxSubjectDNLength];
+    signal input subject_dn_offset;
+    signal input subject_dn_length;
+
+    signal input serial_number_offset;
 
     signal input issuer_rsa_modulus[k];                  // issuer's RSA public key
     signal input issuer_rsa_signature[k];                // certificate signature
@@ -100,7 +106,31 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input smtOldValue;
     signal input smtIsOld0;
 
+    signal output subject_dn_hash;
+    signal output packed_tbs;
+
     VerifyTBSinCert(maxMessageLength, maxMessageLength)(user_cert_zero_padded, issuer_tbs, actual_issuer_tbs_length);
+
+    VerifySubjectDN(maxMessageLength, maxSubjectDNLength)(
+        user_cert_zero_padded,
+        subject_dn,
+        subject_dn_offset,
+        subject_dn_length
+    );
+
+    var MAX_TBS_BYTES = 31;
+    signal packed_tbs_fields[1];
+    PackBytes(MAX_TBS_BYTES, maxMessageLength)(tbs) ==> packed_tbs_fields;
+    packed_tbs <== packed_tbs_fields[0];
+
+    var MAX_SERIAL_NUMBER_LEN = 16;
+    VerifySerialNumber(maxMessageLength, MAX_SERIAL_NUMBER_LEN)(
+        user_cert_zero_padded,
+        serial_number_offset,
+        serialNumber
+    );
+
+    PoseidonBytes(maxSubjectDNLength)(subject_dn) ==> subject_dn_hash;
 
     signal user_rsa_extracted_modulus[k];
     ExtractModulus(maxMessageLength, n, k, modulusBits)(
