@@ -346,7 +346,41 @@ template VerifySerialNumber(MAX_CERT_LEN, MAX_SERIAL_LEN) {
     signal input offset;
     signal input target;
 
-    // Step 1: extract bytes (same as before)
+    // Step 0: extract tag byte (offset-2) and length byte (offset-1)
+    // using dot-product selector for dynamic index
+    component tagEq[MAX_CERT_LEN];
+    component lenEq[MAX_CERT_LEN];
+    signal tagSelected[MAX_CERT_LEN];
+    signal lenSelected[MAX_CERT_LEN];
+    signal tagSum[MAX_CERT_LEN + 1];
+    signal lenSum[MAX_CERT_LEN + 1];
+
+    tagSum[0] <== 0;
+    lenSum[0] <== 0;
+    for (var j = 0; j < MAX_CERT_LEN; j++) {
+        tagEq[j] = IsEqual();
+        tagEq[j].in[0] <== j;
+        tagEq[j].in[1] <== offset - 2;
+        tagSelected[j] <== cert[j] * tagEq[j].out;
+        tagSum[j+1] <== tagSum[j] + tagSelected[j];
+
+        lenEq[j] = IsEqual();
+        lenEq[j].in[0] <== j;
+        lenEq[j].in[1] <== offset - 1;
+        lenSelected[j] <== cert[j] * lenEq[j].out;
+        lenSum[j+1] <== lenSum[j] + lenSelected[j];
+    }
+
+    // Enforce ASN.1 INTEGER tag (0x02) and length (MAX_SERIAL_LEN)
+    signal isIntegerTag;
+    IsEqual()([tagSum[MAX_CERT_LEN], 2]) ==> isIntegerTag;
+    isIntegerTag === 1;  // ✓ was === 0 (wrong)
+
+    signal isLen;
+    IsEqual()([lenSum[MAX_CERT_LEN], MAX_SERIAL_LEN]) ==> isLen;
+    isLen === 1;  // ✓ was === 0 (wrong)
+
+    // Step 1: extract serial bytes at [offset .. offset+MAX_SERIAL_LEN)
     component isEq[MAX_SERIAL_LEN][MAX_CERT_LEN];
     signal selected[MAX_SERIAL_LEN][MAX_CERT_LEN];
     signal sums[MAX_SERIAL_LEN][MAX_CERT_LEN + 1];
