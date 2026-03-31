@@ -85,11 +85,11 @@ struct RsaCircuitInput {
 
 #[derive(Debug)]
 struct CertOffsets {
-    pub modulus_offset: usize,     // first real modulus byte (after sign byte)
-    pub modulus_tag_offset: usize, // where 0x02 INTEGER tag is
-    pub subject_dn_offset: usize,  // where subject DN starts
-    pub subject_dn_length: usize,  // length of subject DN
-    pub serial_number_offset: usize, // where serial number starts
+    modulus_offset: usize,     // first real modulus byte (after sign byte)
+    modulus_tag_offset: usize, // where 0x02 INTEGER tag is
+    subject_dn_offset: usize,  // where subject DN starts
+    subject_dn_length: usize,  // length of subject DN
+    serial_number_offset: usize, // where serial number starts
 }
 // === HiPKI /pkcs11info?withcert=true response structs ===
 

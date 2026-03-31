@@ -333,6 +333,9 @@ template VerifySubjectDN(MAX_CERT_LEN, MAX_SUBJECT_LEN) {
         isLt[i].in[0] <== i;
         isLt[i].in[1] <== length;
         (cert_byte[i] - subject_dn[i]) * isLt[i].out === 0;
+
+        // enforce zero-padding when i >= length
+        subject_dn[i] * (1 - isLt[i].out) === 0;
     }
 }
 
