@@ -1579,6 +1579,7 @@
   ],
   "issuer_tbs_length": 960,
   "serialNumber": "132397293176834651891285756205883548413",
+  "serial_number_offset": 15,
   "smtIsOld0": "1",
   "smtOldKey": "0",
   "smtOldValue": "0",
@@ -1845,8 +1846,6 @@
   ],
   "subject_dn_length": 62,
   "subject_dn_offset": 151,
-  "subject_number_length": 16,
-  "subject_number_offset": 15,
   "tbs": [
     "101",
     "55",

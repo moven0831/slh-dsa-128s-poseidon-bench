@@ -341,7 +341,6 @@ template VerifySubjectDN(MAX_CERT_LEN, MAX_SUBJECT_LEN) {
 template VerifySerialNumber(MAX_CERT_LEN, MAX_SERIAL_LEN) {
     signal input cert[MAX_CERT_LEN];
     signal input offset;
-    signal input length;
     signal input target;
 
     // Step 1: extract bytes (same as before)

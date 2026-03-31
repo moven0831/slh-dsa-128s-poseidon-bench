@@ -32,7 +32,10 @@ use std::{
     time::Instant,
 };
 use tracing::info;
-use x509_cert::Certificate;
+use x509_cert::{
+    der::{Reader, SliceReader, Tag, TagNumber},
+    Certificate,
+};
 
 witnesscalc_adapter::witness!(rs256);
 
@@ -87,7 +90,6 @@ struct CertOffsets {
     pub subject_dn_offset: usize,  // where subject DN starts
     pub subject_dn_length: usize,  // length of subject DN
     pub serial_number_offset: usize, // where serial number starts
-    pub serial_number_length: usize, // length of serial number
 }
 // === HiPKI /pkcs11info?withcert=true response structs ===
 
@@ -437,8 +439,7 @@ impl Rs256Circuit {
             "subject_dn": zero_pad(&user_subject_der, MAX_SUBJECT_DN_LENGTH),
             "subject_dn_offset": user_offsets.subject_dn_offset,
             "subject_dn_length": user_offsets.subject_dn_length,
-            "subject_number_offset": user_offsets.serial_number_offset,
-            "subject_number_length": user_offsets.serial_number_length,
+            "serial_number_offset": user_offsets.serial_number_offset,
             "user_rsa_signature": user_input.rsa_signature,
             "issuer_rsa_modulus": issuer_input.rsa_modulus,
             "issuer_rsa_signature": issuer_input.rsa_signature,
@@ -471,15 +472,17 @@ impl Rs256Circuit {
             Self::find_subslice(der, &subject_der).ok_or("Subject DN not found in cert DER")?;
         let subject_dn_length = subject_der.len();
 
-        let serial_bytes = cert.tbs_certificate.serial_number.as_bytes();
-        let skip_leading_zero = if serial_bytes[0] == 0x00 { 1 } else { 0 };
-        let trimmed = &serial_bytes[skip_leading_zero..];
-
         // find trimmed bytes in cert_der — skips past tag+length automatically
-        let serial_offset = der
-            .windows(trimmed.len())
-            .position(|w| w == trimmed)
-            .unwrap();
+        let tbs_der = Certificate::from_der(der)?.tbs_certificate.to_der()?;
+        // find where TBS starts in the full cert_der
+        let tbs_start = der
+            .windows(tbs_der.len())
+            .position(|w| w == tbs_der.as_slice())
+            .ok_or("TBS not found in cert DER")?;
+        // find serial offset within tbs_der
+        let serial_offset_in_tbs = Self::find_serial_offset_in_tbs(&tbs_der)?;
+        // final offset within full cert_der
+        let serial_offset = tbs_start + serial_offset_in_tbs;
 
         Ok(CertOffsets {
             modulus_offset,
@@ -487,7 +490,6 @@ impl Rs256Circuit {
             subject_dn_offset,
             subject_dn_length,
             serial_number_offset: serial_offset,
-            serial_number_length: trimmed.len(),
         })
     }
 
@@ -562,6 +564,38 @@ impl Rs256Circuit {
             return Some(0);
         }
         haystack.windows(needle.len()).position(|w| w == needle)
+    }
+
+    /// Find serial number offset in TBS DER using ASN.1 parser.
+    fn find_serial_offset_in_tbs(tbs_der: &[u8]) -> Result<usize, Box<dyn std::error::Error>> {
+        let mut r = SliceReader::new(tbs_der)?;
+
+        // 1. Consume the outer SEQUENCE header (tag + length bytes)
+        let seq_header = r.peek_header()?;
+        assert_eq!(seq_header.tag, Tag::Sequence);
+        let seq_header_len: usize = seq_header.encoded_len()?.try_into()?;
+        r.read_slice(seq_header_len.try_into()?)?; // advance past tag+length
+
+        // 2. Skip optional [0] EXPLICIT version (tag 0xa0) if present
+        let next = r.peek_header()?;
+        if next.tag
+            == (Tag::ContextSpecific {
+                constructed: true,
+                number: TagNumber::N0,
+            })
+        {
+            let skip: usize = (next.encoded_len()? + next.length)?.try_into()?;
+            r.read_slice(skip.try_into()?)?;
+        }
+
+        // 3. Now must be at INTEGER (serial number)
+        let serial_header = r.peek_header()?;
+        assert_eq!(serial_header.tag, Tag::Integer); // ← should pass now
+
+        let serial_header_len: usize = serial_header.encoded_len()?.try_into()?;
+        let tag_pos: usize = r.position().try_into()?;
+
+        Ok(tag_pos + serial_header_len) // offset of serial value bytes
     }
 
     // === Utility functions ===
