@@ -93,6 +93,8 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input subject_dn_offset;
     signal input subject_dn_length;
 
+    signal input serial_number_offset;
+
     signal input issuer_rsa_modulus[k];                  // issuer's RSA public key
     signal input issuer_rsa_signature[k];                // certificate signature
 
@@ -105,6 +107,7 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     signal input smtIsOld0;
 
     signal output subject_dn_hash;
+    signal output packed_tbs;
 
     VerifyTBSinCert(maxMessageLength, maxMessageLength)(user_cert_zero_padded, issuer_tbs, actual_issuer_tbs_length);
 
@@ -113,6 +116,18 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
         subject_dn,
         subject_dn_offset,
         subject_dn_length
+    );
+
+    var MAX_TBS_BYTES = 31;
+    signal packed_tbs_fields[1];
+    PackBytes(MAX_TBS_BYTES, maxMessageLength)(tbs) ==> packed_tbs_fields;
+    packed_tbs <== packed_tbs_fields[0];
+
+    var MAX_SERIAL_NUMBER_LEN = 16;
+    VerifySerialNumber(maxMessageLength, MAX_SERIAL_NUMBER_LEN)(
+        user_cert_zero_padded,
+        serial_number_offset,
+        serialNumber
     );
 
     PoseidonBytes(maxSubjectDNLength)(subject_dn) ==> subject_dn_hash;

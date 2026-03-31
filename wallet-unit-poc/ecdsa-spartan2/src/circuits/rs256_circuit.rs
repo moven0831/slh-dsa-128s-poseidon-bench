@@ -32,7 +32,10 @@ use std::{
     time::Instant,
 };
 use tracing::info;
-use x509_cert::Certificate;
+use x509_cert::{
+    der::{Reader, SliceReader, Tag, TagNumber},
+    Certificate,
+};
 
 witnesscalc_adapter::witness!(rs256);
 
@@ -86,6 +89,7 @@ struct CertOffsets {
     pub modulus_tag_offset: usize, // where 0x02 INTEGER tag is
     pub subject_dn_offset: usize,  // where subject DN starts
     pub subject_dn_length: usize,  // length of subject DN
+    pub serial_number_offset: usize, // where serial number starts
 }
 // === HiPKI /pkcs11info?withcert=true response structs ===
 
@@ -246,15 +250,22 @@ impl Rs256Circuit {
         issuer_id: &str,
         output_path: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let cert_der =
-            base64::engine::general_purpose::STANDARD.decode(&sign_response.certb64)?;
+        let cert_der = base64::engine::general_purpose::STANDARD.decode(&sign_response.certb64)?;
         let user_cert = Certificate::from_der(&cert_der)?;
 
         let subject_cn = Self::get_attr(&user_cert.tbs_certificate.subject, COMMON_NAME);
         // Strip leading 0x00 padding bytes from DER INTEGER encoding
         let serial_bytes = user_cert.tbs_certificate.serial_number.as_bytes();
-        let trimmed: Vec<u8> = serial_bytes.iter().skip_while(|&&b| b == 0).copied().collect();
-        let serial_hex = hex::encode(if trimmed.is_empty() { serial_bytes } else { &trimmed });
+        let trimmed: Vec<u8> = serial_bytes
+            .iter()
+            .skip_while(|&&b| b == 0)
+            .copied()
+            .collect();
+        let serial_hex = hex::encode(if trimmed.is_empty() {
+            serial_bytes
+        } else {
+            &trimmed
+        });
         info!(subject = %subject_cn, serial = %serial_hex, "Parsed user certificate");
 
         Self::verify_issuer_signature(issuer_cert, &user_cert)?;
@@ -266,7 +277,10 @@ impl Rs256Circuit {
         let smt_inputs = if let Some(server_url) = smt_server {
             info!(url = %server_url, "Fetching SMT proof");
             Some(crate::smt_client::fetch_smt_proof(
-                server_url, issuer_id, &serial_hex, 128,
+                server_url,
+                issuer_id,
+                &serial_hex,
+                128,
             )?)
         } else {
             None
@@ -304,7 +318,14 @@ impl Rs256Circuit {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let response_string = std::fs::read_to_string(response_path)?;
         let response: CardSignResponse = serde_json::from_str(&response_string)?;
-        Self::generate_input(&response, tbs, issuer_cert, smt_server, issuer_id, output_path)
+        Self::generate_input(
+            &response,
+            tbs,
+            issuer_cert,
+            smt_server,
+            issuer_id,
+            output_path,
+        )
     }
 
     // === Per-certificate RSA input generation ===
@@ -368,8 +389,7 @@ impl Rs256Circuit {
             v
         };
 
-        let user_input =
-            Self::generate_rsa_circuit_input(user_cert, user_signature_b64, user_tbs)?;
+        let user_input = Self::generate_rsa_circuit_input(user_cert, user_signature_b64, user_tbs)?;
         let issuer_input =
             Self::generate_rsa_circuit_input(issuer_cert, issuer_signature_b64, issuer_tbs)?;
 
@@ -419,6 +439,7 @@ impl Rs256Circuit {
             "subject_dn": zero_pad(&user_subject_der, MAX_SUBJECT_DN_LENGTH),
             "subject_dn_offset": user_offsets.subject_dn_offset,
             "subject_dn_length": user_offsets.subject_dn_length,
+            "serial_number_offset": user_offsets.serial_number_offset,
             "user_rsa_signature": user_input.rsa_signature,
             "issuer_rsa_modulus": issuer_input.rsa_modulus,
             "issuer_rsa_signature": issuer_input.rsa_signature,
@@ -447,28 +468,37 @@ impl Rs256Circuit {
 
         let cert = Certificate::from_der(der)?;
         let subject_der = cert.tbs_certificate.subject.to_der()?;
-        let subject_dn_offset = Self::find_subslice(der, &subject_der)
-            .ok_or("Subject DN not found in cert DER")?;
+        let subject_dn_offset =
+            Self::find_subslice(der, &subject_der).ok_or("Subject DN not found in cert DER")?;
         let subject_dn_length = subject_der.len();
+
+        // find trimmed bytes in cert_der — skips past tag+length automatically
+        let tbs_der = Certificate::from_der(der)?.tbs_certificate.to_der()?;
+        // find where TBS starts in the full cert_der
+        let tbs_start = der
+            .windows(tbs_der.len())
+            .position(|w| w == tbs_der.as_slice())
+            .ok_or("TBS not found in cert DER")?;
+        // find serial offset within tbs_der
+        let serial_offset_in_tbs = Self::find_serial_offset_in_tbs(&tbs_der)?;
+        // final offset within full cert_der
+        let serial_offset = tbs_start + serial_offset_in_tbs;
 
         Ok(CertOffsets {
             modulus_offset,
             modulus_tag_offset,
             subject_dn_offset,
             subject_dn_length,
+            serial_number_offset: serial_offset,
         })
     }
 
     /// Returns (modulus_value_offset, integer_tag_offset) by navigating the SPKI structure.
     fn find_modulus_offset(der: &[u8]) -> Result<(usize, usize), Box<dyn std::error::Error>> {
         let cert = Certificate::from_der(der)?;
-        let spki_der = cert
-            .tbs_certificate
-            .subject_public_key_info
-            .to_der()?;
+        let spki_der = cert.tbs_certificate.subject_public_key_info.to_der()?;
 
-        let spki_abs = Self::find_subslice(der, &spki_der)
-            .ok_or("SPKI not found in cert DER")?;
+        let spki_abs = Self::find_subslice(der, &spki_der).ok_or("SPKI not found in cert DER")?;
 
         let mut pos = 0usize;
 
@@ -534,6 +564,38 @@ impl Rs256Circuit {
             return Some(0);
         }
         haystack.windows(needle.len()).position(|w| w == needle)
+    }
+
+    /// Find serial number offset in TBS DER using ASN.1 parser.
+    fn find_serial_offset_in_tbs(tbs_der: &[u8]) -> Result<usize, Box<dyn std::error::Error>> {
+        let mut r = SliceReader::new(tbs_der)?;
+
+        // 1. Consume the outer SEQUENCE header (tag + length bytes)
+        let seq_header = r.peek_header()?;
+        assert_eq!(seq_header.tag, Tag::Sequence);
+        let seq_header_len: usize = seq_header.encoded_len()?.try_into()?;
+        r.read_slice(seq_header_len.try_into()?)?; // advance past tag+length
+
+        // 2. Skip optional [0] EXPLICIT version (tag 0xa0) if present
+        let next = r.peek_header()?;
+        if next.tag
+            == (Tag::ContextSpecific {
+                constructed: true,
+                number: TagNumber::N0,
+            })
+        {
+            let skip: usize = (next.encoded_len()? + next.length)?.try_into()?;
+            r.read_slice(skip.try_into()?)?;
+        }
+
+        // 3. Now must be at INTEGER (serial number)
+        let serial_header = r.peek_header()?;
+        assert_eq!(serial_header.tag, Tag::Integer); // ← should pass now
+
+        let serial_header_len: usize = serial_header.encoded_len()?.try_into()?;
+        let tag_pos: usize = r.position().try_into()?;
+
+        Ok(tag_pos + serial_header_len) // offset of serial value bytes
     }
 
     // === Utility functions ===
@@ -679,7 +741,7 @@ impl SpartanCircuit<E> for Rs256Circuit {
 
     /// RS256 circuit public inputs
     fn public_values(&self) -> Result<Vec<Scalar>, SynthesisError> {
-        let num_public = 20; // 17 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber) + 1 (subjectDNHash)
+        let num_public = 21; // 17 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber) + 1 (subjectDNHash) + 1 (TBS)
         let witness = self.get_or_generate_witness().ok();
 
         let mut values = Vec::with_capacity(num_public);
@@ -727,10 +789,7 @@ mod tests {
     fn test_extract_issuer_cert() {
         let pkcs11: Pkcs11InfoResponse = serde_json::from_str(PKCS11_RESPONSE).unwrap();
         let cert = Rs256Circuit::extract_issuer_cert(&pkcs11).unwrap();
-        let ou = Rs256Circuit::get_attr(
-            &cert.tbs_certificate.subject,
-            ORGANIZATIONAL_UNIT_NAME,
-        );
+        let ou = Rs256Circuit::get_attr(&cert.tbs_certificate.subject, ORGANIZATIONAL_UNIT_NAME);
         assert!(!ou.is_empty(), "Issuer cert should have an OU");
     }
 
@@ -767,8 +826,7 @@ mod tests {
     fn test_rsa_circuit_input_dimensions() {
         let user_cert = load_user_cert();
         let input = Rs256Circuit::generate_rsa_circuit_input(
-            &user_cert,
-            "AAAA", // dummy base64 signature
+            &user_cert, "AAAA", // dummy base64 signature
             b"test",
         )
         .unwrap();
@@ -787,8 +845,8 @@ mod tests {
         let response: CardSignResponse = serde_json::from_str(SIGN_RESPONSE).unwrap();
         let tbs = b"123456";
         let user_cert_tbs_der = user_cert.tbs_certificate.to_der().unwrap();
-        let issuer_sig = base64::engine::general_purpose::STANDARD
-            .encode(user_cert.signature.raw_bytes());
+        let issuer_sig =
+            base64::engine::general_purpose::STANDARD.encode(user_cert.signature.raw_bytes());
         let serial_hex = hex::encode(user_cert.tbs_certificate.serial_number.as_bytes());
 
         let input = Rs256Circuit::generate_circuit_input(
