@@ -516,12 +516,12 @@ template ExtractModulus(maxLen, n, k, modulusBits) {
     }
 }
 
-template PackBytes(N_BYTES) {
+template PackBytes(N_BYTES, TBS_LENGTH) {
     // packs N_BYTES into ceil(N_BYTES/31) field elements
     var BYTES_PER_FIELD = 31;
     var N_FIELDS = (N_BYTES + BYTES_PER_FIELD - 1) \ BYTES_PER_FIELD;
 
-    signal input in[N_BYTES];
+    signal input in[TBS_LENGTH];
     signal output out[N_FIELDS];
 
     for (var f = 0; f < N_FIELDS; f++) {
@@ -546,7 +546,7 @@ template PoseidonBytes(N_BYTES) {
     signal output out;
 
     // step 1: pack bytes → field elements
-    component packer = PackBytes(N_BYTES);
+    component packer = PackBytes(N_BYTES, N_BYTES);
     for (var i = 0; i < N_BYTES; i++) {
         packer.in[i] <== in[i];
     }

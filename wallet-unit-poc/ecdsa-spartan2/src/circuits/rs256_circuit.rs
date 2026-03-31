@@ -707,7 +707,7 @@ impl SpartanCircuit<E> for Rs256Circuit {
 
     /// RS256 circuit public inputs
     fn public_values(&self) -> Result<Vec<Scalar>, SynthesisError> {
-        let num_public = 20; // 17 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber) + 1 (subjectDNHash)
+        let num_public = 21; // 17 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber) + 1 (subjectDNHash) + 1 (TBS)
         let witness = self.get_or_generate_witness().ok();
 
         let mut values = Vec::with_capacity(num_public);
