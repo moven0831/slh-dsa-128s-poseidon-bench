@@ -65,3 +65,15 @@ jobs:
         run: |
           cd wallet-unit-poc/mobile
           cargo test --release --no-default-features --lib
+
+      - name: Create ZIP of keys
+        run: zip -r ecdsa-spartan2-keys.zip wallet-unit-poc/ecdsa-spartan2/keys
+
+      - name: Upload keys ZIP to GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: ./ecdsa-spartan2-keys.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
