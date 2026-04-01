@@ -18,14 +18,14 @@ mopro_ffi::app!();
 // ============================================================================
 
 /// Result of a proving operation with timing and proof metadata
-#[cfg_attr(feature = "uniffi", uniffi::record)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct ProofResult {
     pub prove_ms: u64,
     pub proof_size_bytes: u64,
 }
 
 /// Result of a complete benchmark run with timing and size metrics
-#[cfg_attr(feature = "uniffi", uniffi::record)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 pub struct BenchmarkResults {
     // Timing metrics (milliseconds)
     pub setup_ms: u64,
@@ -53,7 +53,7 @@ impl BenchmarkResults {
 
 /// Errors that can occur during ZK proof operations
 #[derive(Debug)]
-#[cfg_attr(feature = "uniffi", uniffi::error)]
+#[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum ZkProofError {
     FileNotFound { message: String },
     ProofGenerationFailed { message: String },
