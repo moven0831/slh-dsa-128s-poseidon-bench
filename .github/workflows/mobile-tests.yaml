@@ -327,6 +327,7 @@ jobs:
 
             - name: Create ZIP of xcframework
               run: |
+                  cd wallet-unit-poc/mobile
                   zip -r MoproiOSBindings.zip MoproiOSBindings
 
             - name: Upload release assets to GitHub Release
@@ -335,7 +336,7 @@ jobs:
               with:
                   tag_name: ${{ github.ref_name }}
                   files: |
-                      ./MoproiOSBindings.zip
+                      wallet-unit-poc/mobile/MoproiOSBindings.zip
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -368,7 +369,7 @@ jobs:
             - name: Build Android bindings
               run: |
                   cd wallet-unit-poc/mobile
-                  ANDROID_ARCHS=aarch64-linux-android CONFIGURATION=release cargo run --bin android
+                  ANDROID_ARCHS=aarch64-linux-android CONFIGURATION=release cargo run --bin android -vvv
 
             - name: Create ZIP of xcframework
               run: |
