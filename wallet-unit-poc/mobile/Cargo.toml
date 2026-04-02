@@ -13,7 +13,7 @@ uniffi = ["mopro-ffi/uniffi"]
 flutter = ["mopro-ffi/flutter"]
 
 [dependencies]
-mopro-ffi = "0.3.2"
+mopro-ffi = "0.3.5"
 thiserror = "2.0.12"
 anyhow = "1.0.99"
 ecdsa-spartan2 = { path = "../ecdsa-spartan2" }
@@ -48,7 +48,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 tempfile = "3.8"
-mopro-ffi = { version = "0.3.2", features = ["uniffi-tests"] }
+mopro-ffi = { version = "0.3.5", features = ["uniffi-tests"] }
 
 [build-dependencies]
 spartan2 = { git = "https://github.com/therealyingtong/Spartan2.git", branch = "zk", default-features = false }

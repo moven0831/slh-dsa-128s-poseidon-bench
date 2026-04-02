@@ -479,6 +479,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9555578bc9e57714c812a1f84e4fc5b4d21fcb063490c624de019f7464c91268"
 
 [[package]]
+name = "chkstk_stub"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "047f6ab2f3b9bcaf23b593d1580898e4244d27eadf1a1fae99212ee5735d3d1c"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -916,6 +925,7 @@ dependencies = [
  "bellpepper",
  "bellpepper-core",
  "bincode",
+ "chkstk_stub",
  "circom-scotia",
  "const-oid",
  "der",
@@ -1827,9 +1837,9 @@ dependencies = [
 
 [[package]]
 name = "mopro-ffi"
-version = "0.3.2"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d0df5539ac49438a41102432a52acd4ee8a54cb2651e2467d5b6bc18475c96e"
+checksum = "8ba8b11b3ca5311830103bbef75ae5c8b5f5f5e37c40e42a628a02c550d0c733"
 dependencies = [
  "anyhow",
  "camino",

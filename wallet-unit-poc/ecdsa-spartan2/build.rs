@@ -1,6 +1,8 @@
 use std::path::Path;
 
 fn main() {
+    chkstk_stub::build();
+
     // Construct absolute path to circuits using CARGO_MANIFEST_DIR
     // This ensures the path resolves correctly regardless of working directory
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");

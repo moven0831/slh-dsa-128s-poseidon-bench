@@ -5,3 +5,5 @@ Config.toml
 
 # GMP build cache
 .build-cache/
+./MoproiOSBindings
+./MoproAndroidBindings
