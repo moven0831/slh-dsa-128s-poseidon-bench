@@ -56,6 +56,6 @@ spartan2 = { git = "https://github.com/therealyingtong/Spartan2.git", branch = "
 [profile.release]
 opt-level = 3       # Optimize for performance
 lto = "thin"        # Enable thin Link-Time Optimization for better cross-crate optimization
-strip = true        # Strip debug symbols from release binaries
+strip = "debuginfo" # Strip debug info only; keep symbol table (required for uniffi metadata extraction)
 debug = false       # Disable debug info in release builds
 codegen-units = 1   # Better optimization at the cost of longer compile time
