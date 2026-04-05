@@ -49,13 +49,18 @@ pub(crate) fn call_jwt_witness(
         #[cfg(has_circuit_8k)]
         "jwt_8k" => jwt_8k_witness(inputs_json),
 
-        name => {
+        name if name.starts_with("jwt_") => {
             eprintln!(
-                "Circuit '{}' is not compiled into this binary.\n\
-                 Run `yarn compile:jwt:{} && cargo build --release` first.",
+                "Circuit '{}' is not compiled into this binary. Falling back to generic 'jwt'.\n\
+                 For size-specific witness generation, run `yarn compile:jwt:{} && cargo build --release` first.",
                 name,
                 name.strip_prefix("jwt_").unwrap_or(name)
             );
+            jwt_witness(inputs_json)
+        }
+
+        name => {
+            eprintln!("Circuit '{}' is not compiled into this binary.", name);
             return Err(SynthesisError::Unsatisfiable);
         }
     };
@@ -123,14 +128,6 @@ impl PrepareCircuit {
         }
     }
 
-    /// Resolve the input JSON path using PathConfig.
-    fn resolve_input_json(&self) -> PathBuf {
-        self.input_path
-            .as_ref()
-            .map(|p| self.path_config.resolve(p))
-            .unwrap_or_else(|| self.path_config.input_json("jwt"))
-    }
-
     /// Get the R1CS file path.
     fn r1cs_path(&self) -> PathBuf {
         self.path_config.r1cs_path("jwt")
@@ -164,7 +161,7 @@ impl SpartanCircuit<E> for PrepareCircuit {
         _: Option<&[Scalar]>,
     ) -> Result<(), SynthesisError> {
         let cs_type = type_name::<CS>();
-        let is_setup_phase = cs_type.contains("ShapeCS");
+        let is_setup_phase = cs_type.contains("ShapeCS") || cs_type.contains("Shape");
 
         if is_setup_phase {
             let r1cs =
@@ -180,12 +177,12 @@ impl SpartanCircuit<E> for PrepareCircuit {
                 synthesize(cs, r1cs, Some(witness))?;
             }
             Err(_) => {
-                // Prepare circuit: public signals = ageClaim[decoded_len] + KeyBindingX + KeyBindingY
+                // Prepare circuit: public signals = normalizedClaimValues[nClaims] + KeyBindingX + KeyBindingY
                 let layout = calculate_jwt_output_indices(
                     self.path_config.circuit_size.max_matches(),
                     self.path_config.circuit_size.max_claims_length(),
                 );
-                let num_public = layout.age_claim_len + 2;
+                let num_public = layout.normalized_claim_len + 2;
                 synthesize_witness_only(cs, &witness, num_public)?;
             }
         }
@@ -197,7 +194,7 @@ impl SpartanCircuit<E> for PrepareCircuit {
             self.path_config.circuit_size.max_matches(),
             self.path_config.circuit_size.max_claims_length(),
         );
-        let num_public = layout.age_claim_len + 2;
+        let num_public = layout.normalized_claim_len + 2;
 
         let witness = self.get_or_generate_witness().ok();
 
@@ -243,14 +240,14 @@ impl SpartanCircuit<E> for PrepareCircuit {
         let keybinding_y_alloc =
             AllocatedNum::alloc(cs.namespace(|| "KeyBindingY"), || Ok(keybinding_y))?;
 
-        let mut shared_values = Vec::with_capacity(2 + layout.age_claim_len);
+        let mut shared_values = Vec::with_capacity(2 + layout.normalized_claim_len);
         shared_values.push(keybinding_x_alloc);
         shared_values.push(keybinding_y_alloc);
 
-        for idx in 0..layout.age_claim_len {
+        for idx in 0..layout.normalized_claim_len {
             let claim_scalar = witness
                 .as_ref()
-                .map(|w| w[layout.age_claim_start + idx])
+                .map(|w| w[layout.normalized_claim_start + idx])
                 .unwrap_or(Scalar::ZERO);
             let claim_alloc =
                 AllocatedNum::alloc(cs.namespace(|| format!("Claim{idx}")), move || {

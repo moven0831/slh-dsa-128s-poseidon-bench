@@ -101,7 +101,19 @@ impl PathConfig {
                 .join(format!("{}.r1cs", circuit))
         } else {
             let name = if circuit == "jwt" {
-                self.circuit_size.circuit_name()
+                let preferred = self.circuit_size.circuit_name();
+                let preferred_path = self
+                    .base_dir
+                    .join("../circom/build")
+                    .join(preferred)
+                    .join(format!("{}_js", preferred))
+                    .join(format!("{}.r1cs", preferred));
+
+                if preferred_path.exists() {
+                    preferred
+                } else {
+                    "jwt"
+                }
             } else {
                 circuit
             };

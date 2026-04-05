@@ -433,7 +433,98 @@ fn run_prove_pipeline(
     })
 }
 
+/// Show-only benchmark: prove + verify using pre-generated Show keys.
+fn run_show_only_benchmark(path_config: PathConfig, input_path: Option<PathBuf>) {
+    let size = path_config.circuit_size;
+
+    println!("\n╔════════════════════════════════════════════════════╗");
+    println!(
+        "║  SHOW BENCHMARK — prove + verify  (size: {:>3})      ║",
+        size
+    );
+    println!("╚════════════════════════════════════════════════════╝\n");
+
+    let show_pk_path = path_config.key_path(SHOW_PROVING_KEY);
+    let show_vk_path = path_config.key_path(SHOW_VERIFYING_KEY);
+
+    if !show_pk_path.exists() || !show_vk_path.exists() {
+        eprintln!(
+            "Show keys not found for size {size}.\n\
+             Run:  cargo run --release -- show setup --size {size}"
+        );
+        process::exit(1);
+    }
+
+    let show_pk = load_proving_key(&show_pk_path).expect("Failed to load show proving key");
+    let show_vk = load_verifying_key(&show_vk_path).expect("Failed to load show verifying key");
+
+    info!("Proving Show circuit...");
+    let t0 = Instant::now();
+    let show_circuit = ShowCircuit::new(path_config.clone(), input_path);
+    prove_circuit_with_pk(
+        show_circuit,
+        &show_pk,
+        path_config.artifact_path(SHOW_INSTANCE),
+        path_config.artifact_path(SHOW_WITNESS),
+        path_config.artifact_path(SHOW_PROOF),
+    );
+    let prove_show_ms = t0.elapsed().as_millis();
+    println!("✓ Show proof generated: {} ms\n", prove_show_ms);
+
+    let show_proof =
+        load_proof(path_config.artifact_path(SHOW_PROOF)).expect("load show proof failed");
+
+    info!("Verifying Show proof...");
+    let t0 = Instant::now();
+    let show_public_values = verify_circuit_with_loaded_data(&show_proof, &show_vk);
+    let verify_show_ms = t0.elapsed().as_millis();
+    println!("✓ Show proof verified: {} ms", verify_show_ms);
+    if !show_public_values.is_empty() {
+        let expression_result = show_public_values[0] == Field::ONE;
+        println!("  expressionResult: {}\n", expression_result);
+    }
+
+    let show_pk_bytes = get_file_size(&show_pk_path.to_string_lossy());
+    let show_vk_bytes = get_file_size(&show_vk_path.to_string_lossy());
+    let show_proof_bytes =
+        get_file_size(&path_config.artifact_path(SHOW_PROOF).to_string_lossy());
+    let show_witness_bytes =
+        get_file_size(&path_config.artifact_path(SHOW_WITNESS).to_string_lossy());
+
+    println!("╔════════════════════════════════════════════════════╗");
+    println!(
+        "║   SHOW BENCHMARK RESULTS — size: {:>4}             ║",
+        size
+    );
+    println!("╠════════════════════════════════════════════════════╣");
+    println!("║ TIMING                                             ║");
+    println!("╠════════════════════════════════════════════════════╣");
+    println!("║ Prove Show:             {:>10} ms          ║", prove_show_ms);
+    println!("║ Verify Show:            {:>10} ms          ║", verify_show_ms);
+    println!("╠════════════════════════════════════════════════════╣");
+    println!("║ SIZE                                               ║");
+    println!("╠════════════════════════════════════════════════════╣");
+    println!(
+        "║ Show Proving Key:       {:>14}         ║",
+        BenchmarkResults::format_size(show_pk_bytes)
+    );
+    println!(
+        "║ Show Verifying Key:     {:>14}         ║",
+        BenchmarkResults::format_size(show_vk_bytes)
+    );
+    println!(
+        "║ Show Proof:             {:>14}         ║",
+        BenchmarkResults::format_size(show_proof_bytes)
+    );
+    println!(
+        "║ Show Witness:           {:>14}         ║",
+        BenchmarkResults::format_size(show_witness_bytes)
+    );
+    println!("╚════════════════════════════════════════════════════╝\n");
+}
+
 /// Full 9-step benchmark: setup → prove → reblind → verify.
+#[allow(dead_code)]
 fn run_complete_pipeline(path_config: PathConfig, input_path: Option<PathBuf>) -> BenchmarkResults {
     let size = path_config.circuit_size;
 
@@ -598,8 +689,10 @@ fn execute_prepare(action: CircuitAction, options: CommandOptions) {
             generate_shared_blinds::<E>(path_config.artifact_path(SHARED_BLINDS), NUM_SHARED);
         }
         CircuitAction::Benchmark => {
-            let results = run_complete_pipeline(path_config, options.input);
-            results.print_summary();
+            // Previous full benchmark path (kept for future reuse):
+            // let results = run_complete_pipeline(path_config, options.input);
+            // results.print_summary();
+            run_show_only_benchmark(path_config, options.input);
         }
     }
 }
@@ -659,8 +752,10 @@ fn execute_show(action: CircuitAction, options: CommandOptions) {
             process::exit(1);
         }
         CircuitAction::Benchmark => {
-            let results = run_complete_pipeline(path_config, options.input);
-            results.print_summary();
+            // Previous full benchmark path (kept for future reuse):
+            // let results = run_complete_pipeline(path_config, options.input);
+            // results.print_summary();
+            run_show_only_benchmark(path_config, options.input);
         }
     }
 }
@@ -678,7 +773,8 @@ fn parse_command(args: &[String]) -> Result<ParsedCommand, String> {
         "prepare" => parse_circuit_command(CircuitKind::Prepare, &args[1..]),
         "show" => parse_circuit_command(CircuitKind::Show, &args[1..]),
         "benchmark" => Ok(ParsedCommand {
-            circuit: CircuitKind::Prepare,
+            // circuit: CircuitKind::Prepare,
+            circuit: CircuitKind::Show,
             action: CircuitAction::Benchmark,
             options: parse_options(&args[1..])?,
         }),

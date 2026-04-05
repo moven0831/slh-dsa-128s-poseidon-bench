@@ -28,8 +28,14 @@ compile_circuit() {
   cp "$name.r1cs" "${name}_js/" || { echo "Error: Failed to copy $name.r1cs."; exit 1; }
   cd ../.. || exit 1
   mkdir -p build/cpp || { echo "Error: Failed to create cpp directory."; exit 1; }
-  [ ! -f "build/cpp/$name.cpp" ] && cp "build/$name/${name}_cpp/$name.cpp" build/cpp/ || true
-  [ ! -f "build/cpp/$name.dat" ] && cp "build/$name/${name}_cpp/$name.dat" build/cpp/ || true
+  cp -f "build/$name/${name}_cpp/$name.cpp" "build/cpp/$name.cpp" || {
+    echo "Error: Failed to sync build/cpp/$name.cpp.";
+    exit 1;
+  }
+  cp -f "build/$name/${name}_cpp/$name.dat" "build/cpp/$name.dat" || {
+    echo "Error: Failed to sync build/cpp/$name.dat.";
+    exit 1;
+  }
   echo "$name compilation complete."
 }
 

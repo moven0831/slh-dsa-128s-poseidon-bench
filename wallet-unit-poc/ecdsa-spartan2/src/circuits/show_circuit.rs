@@ -96,17 +96,11 @@ impl ShowCircuit {
         let json_value: serde_json::Value =
             serde_json::from_reader(file).map_err(|_| SynthesisError::AssignmentMissing)?;
 
-        let inputs = parse_show_inputs(&json_value)?;
-
         info!("Generating witness using witnesscalc...");
         let t0 = Instant::now();
 
-        let inputs_json = hashmap_to_json_string(
-            &inputs,
-            self.path_config.circuit_size.max_matches(),
-            self.path_config.circuit_size.max_substring_length(),
-            self.path_config.circuit_size.max_claims_length(),
-        )?;
+        let inputs_json =
+            serde_json::to_string(&json_value).map_err(|_| SynthesisError::AssignmentMissing)?;
         let witness_bytes =
             show_witness(&inputs_json).map_err(|_| SynthesisError::Unsatisfiable)?;
 
@@ -143,7 +137,7 @@ impl SpartanCircuit<E> for ShowCircuit {
         _: Option<&[Scalar]>,
     ) -> Result<(), SynthesisError> {
         let cs_type = type_name::<CS>();
-        let is_setup_phase = cs_type.contains("ShapeCS");
+        let is_setup_phase = cs_type.contains("ShapeCS") || cs_type.contains("Shape");
 
         if is_setup_phase {
             let r1cs =
@@ -163,7 +157,7 @@ impl SpartanCircuit<E> for ShowCircuit {
                 synthesize(cs, r1cs, Some(witness))?;
             }
             Err(_) => {
-                // Show circuit: 3 public signals (ageAbove18, deviceKeyX, deviceKeyY)
+                // Show circuit: 3 public signals (expressionResult, deviceKeyX, deviceKeyY)
                 let num_public = 3;
                 synthesize_witness_only(cs, &witness, num_public)?;
             }
@@ -172,7 +166,7 @@ impl SpartanCircuit<E> for ShowCircuit {
     }
 
     fn public_values(&self) -> Result<Vec<Scalar>, SynthesisError> {
-        // Circom public IO: ageAbove18 (output), deviceKeyX, deviceKeyY (inputs)
+        // Circom public IO: expressionResult (output), deviceKeyX, deviceKeyY (inputs)
         // Witness indices 1..=3
         let witness = self.get_or_generate_witness().ok();
 
@@ -187,8 +181,7 @@ impl SpartanCircuit<E> for ShowCircuit {
         &self,
         cs: &mut CS,
     ) -> Result<Vec<AllocatedNum<Scalar>>, SynthesisError> {
-        let layout =
-            calculate_show_witness_indices(self.path_config.circuit_size.max_claims_length());
+        let layout = calculate_show_witness_indices(self.path_config.circuit_size.max_matches());
 
         // Check cached witness first (covers with_witness() path), then try
         // generating from input_path (native path). Returns None during setup.

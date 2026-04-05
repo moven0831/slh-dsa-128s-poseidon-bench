@@ -66,10 +66,10 @@ pub fn parse_jwt_inputs(
         ("matchLength", FieldParser::U64Array),
         ("claimLengths", FieldParser::BigIntArray),
         ("decodeFlags", FieldParser::U64Array),
+        ("claimFormats", FieldParser::BigIntArray),
         // 2D array fields (flattened)
         ("matchSubstring", FieldParser::BigInt2DArray),
         ("claims", FieldParser::BigInt2DArray),
-        ("ageClaimIndex", FieldParser::U64Scalar),
     ];
 
     parse_inputs(json_value, field_defs)
@@ -86,10 +86,14 @@ pub fn parse_show_inputs(
         ("sig_r", FieldParser::BigIntScalar),
         ("sig_s_inverse", FieldParser::BigIntScalar),
         ("messageHash", FieldParser::BigIntScalar),
-        ("claim", FieldParser::BigIntArray),
-        ("currentYear", FieldParser::BigIntScalar),
-        ("currentMonth", FieldParser::BigIntScalar),
-        ("currentDay", FieldParser::BigIntScalar),
+        ("predicateLen", FieldParser::BigIntScalar),
+        ("exprLen", FieldParser::BigIntScalar),
+        ("claimValues", FieldParser::BigIntArray),
+        ("predicateClaimRefs", FieldParser::BigIntArray),
+        ("predicateOps", FieldParser::BigIntArray),
+        ("predicateCompareValues", FieldParser::BigIntArray),
+        ("tokenTypes", FieldParser::BigIntArray),
+        ("tokenValues", FieldParser::BigIntArray),
     ];
 
     parse_inputs(json_value, field_defs)
@@ -215,10 +219,28 @@ pub fn hashmap_to_json_string(
     use serde_json::json;
 
     let mut json_map = serde_json::Map::new();
+    let max_claims = max_matches.saturating_sub(2);
+    let array_fields: HashMap<&str, bool> = [
+        ("message", true),
+        ("matchIndex", true),
+        ("matchLength", true),
+        ("claimLengths", true),
+        ("decodeFlags", true),
+        ("claimFormats", true),
+        ("claimValues", true),
+        ("predicateClaimRefs", true),
+        ("predicateOps", true),
+        ("predicateCompareValues", true),
+        ("tokenTypes", true),
+        ("tokenValues", true),
+    ]
+    .iter()
+    .cloned()
+    .collect();
 
     // Define 2D array fields and their dimensions (rows, cols)
     let two_d_fields: HashMap<&str, (usize, usize)> = [
-        ("claims", (max_matches, max_claims_length)),
+        ("claims", (max_claims, max_claims_length)),
         ("matchSubstring", (max_matches, max_substring_length)),
     ]
     .iter()
@@ -244,6 +266,8 @@ pub fn hashmap_to_json_string(
                 }
             }
             json_map.insert(key.clone(), json!(array_2d));
+        } else if !array_fields.contains_key(key.as_str()) && values.len() == 1 {
+            json_map.insert(key.clone(), json!(values[0].to_string()));
         } else {
             // Regular 1D array
             let string_array: Vec<String> =
@@ -324,72 +348,62 @@ pub fn extract_prepare_shared_data(
     let keybinding_x_bigint = bytes_to_bigint(&decode_base64(keybinding_x_b64)?);
     let keybinding_y_bigint = bytes_to_bigint(&decode_base64(keybinding_y_b64)?);
 
-    let age_claim_index = root_json
-        .get("ageClaimIndex")
-        .and_then(|value| value.as_u64())
-        .ok_or(SynthesisError::AssignmentMissing)? as usize;
-
     let claims = root_json
         .get("claims")
         .and_then(|value| value.as_array())
         .ok_or(SynthesisError::AssignmentMissing)?;
-
-    let claim_values = claims
-        .get(age_claim_index)
-        .and_then(|value| value.as_array())
-        .ok_or(SynthesisError::AssignmentMissing)?;
-
-    let claim_bytes = claim_values
-        .iter()
-        .map(parse_byte)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let max_claim_length = claim_values.len();
-    if max_claim_length == 0 {
-        return Err(SynthesisError::AssignmentMissing);
-    }
-
     let claim_lengths = root_json
         .get("claimLengths")
         .and_then(|value| value.as_array())
         .ok_or(SynthesisError::AssignmentMissing)?;
-
-    let encoded_claim_len_value = claim_lengths
-        .get(age_claim_index)
+    let decode_flags = root_json
+        .get("decodeFlags")
+        .and_then(|value| value.as_array())
+        .ok_or(SynthesisError::AssignmentMissing)?;
+    let claim_formats = root_json
+        .get("claimFormats")
+        .and_then(|value| value.as_array())
         .ok_or(SynthesisError::AssignmentMissing)?;
 
-    let encoded_claim_len = match encoded_claim_len_value {
-        Value::String(s) => s
-            .parse::<usize>()
-            .map_err(|_| SynthesisError::AssignmentMissing)?,
-        Value::Number(n) => n
-            .as_u64()
-            .map(|value| value as usize)
-            .ok_or(SynthesisError::AssignmentMissing)?,
-        _ => return Err(SynthesisError::AssignmentMissing),
-    };
+    let mut claim_scalars = Vec::with_capacity(claims.len());
 
-    if encoded_claim_len > claim_bytes.len() {
-        return Err(SynthesisError::AssignmentMissing);
-    }
+    for index in 0..claims.len() {
+        let decode_flag = parse_usize_value(
+            decode_flags.get(index).ok_or(SynthesisError::AssignmentMissing)?,
+        )?;
 
-    let encoded_claim = String::from_utf8(claim_bytes[..encoded_claim_len].to_vec())
-        .map_err(|_| SynthesisError::AssignmentMissing)?;
+        if decode_flag == 0 {
+            claim_scalars.push(Scalar::from(0u64));
+            continue;
+        }
 
-    let decoded_claim_bytes = decode_base64(&encoded_claim)?;
-    let decoded_len = (max_claim_length * 3) / 4;
+        let claim_values = claims
+            .get(index)
+            .and_then(|value| value.as_array())
+            .ok_or(SynthesisError::AssignmentMissing)?;
 
-    if decoded_claim_bytes.len() > decoded_len {
-        return Err(SynthesisError::AssignmentMissing);
-    }
+        let claim_bytes = claim_values
+            .iter()
+            .map(parse_byte)
+            .collect::<Result<Vec<_>, _>>()?;
 
-    let mut claim_scalars: Vec<Scalar> = decoded_claim_bytes
-        .into_iter()
-        .map(|byte| Scalar::from(byte as u64))
-        .collect();
+        let encoded_claim_len = parse_usize_value(
+            claim_lengths.get(index).ok_or(SynthesisError::AssignmentMissing)?,
+        )?;
 
-    while claim_scalars.len() < decoded_len {
-        claim_scalars.push(Scalar::from(0u64));
+        if encoded_claim_len > claim_bytes.len() {
+            return Err(SynthesisError::AssignmentMissing);
+        }
+
+        let encoded_claim = String::from_utf8(claim_bytes[..encoded_claim_len].to_vec())
+            .map_err(|_| SynthesisError::AssignmentMissing)?;
+
+        let format = parse_usize_value(
+            claim_formats.get(index).ok_or(SynthesisError::AssignmentMissing)?,
+        )?;
+
+        let normalized_claim = normalize_encoded_claim_value(&encoded_claim, format)?;
+        claim_scalars.push(bigint_to_scalar(normalized_claim)?);
     }
 
     let keybinding_x = bigint_to_scalar(keybinding_x_bigint)?;
@@ -479,8 +493,14 @@ fn parse_bigint_string_array(json: &Value, key: &str) -> Result<Vec<BigInt>, Str
     array
         .iter()
         .map(|v| {
-            let s = v.as_str().ok_or("Array element must be a string")?;
-            BigInt::from_str(s).map_err(|_| "Failed to parse array element as BigInt".to_string())
+            if let Some(s) = v.as_str() {
+                BigInt::from_str(s)
+                    .map_err(|_| "Failed to parse array element as BigInt".to_string())
+            } else if let Some(n) = v.as_u64() {
+                Ok(BigInt::from(n))
+            } else {
+                Err("Array element must be a string or number".to_string())
+            }
         })
         .collect()
 }
@@ -521,9 +541,14 @@ fn parse_2d_bigint_array(json: &Value, key: &str) -> Result<Vec<BigInt>, String>
             .ok_or("Outer array element must be an array")?;
 
         for v in inner_array.iter() {
-            let s = v.as_str().ok_or("Inner array element must be a string")?;
-            let bigint =
-                BigInt::from_str(s).map_err(|_| "Failed to parse inner array element as BigInt")?;
+            let bigint = if let Some(s) = v.as_str() {
+                BigInt::from_str(s)
+                    .map_err(|_| "Failed to parse inner array element as BigInt")?
+            } else if let Some(n) = v.as_u64() {
+                BigInt::from(n)
+            } else {
+                return Err("Inner array element must be a string or number".to_string());
+            };
             result.push(bigint);
         }
     }
@@ -539,41 +564,101 @@ fn bytes_to_bigint(bytes: &[u8]) -> BigInt {
     acc
 }
 
+fn parse_usize_value(value: &Value) -> Result<usize, SynthesisError> {
+    match value {
+        Value::String(s) => s
+            .parse::<usize>()
+            .map_err(|_| SynthesisError::AssignmentMissing),
+        Value::Number(n) => n
+            .as_u64()
+            .map(|value| value as usize)
+            .ok_or(SynthesisError::AssignmentMissing),
+        _ => Err(SynthesisError::AssignmentMissing),
+    }
+}
+
+fn normalize_encoded_claim_value(encoded_claim: &str, format: usize) -> Result<BigInt, SynthesisError> {
+    let decoded_claim_bytes = decode_base64(encoded_claim)?;
+    let decoded_claim: Value =
+        serde_json::from_slice(&decoded_claim_bytes).map_err(|_| SynthesisError::AssignmentMissing)?;
+
+    let raw_value = decoded_claim
+        .as_array()
+        .and_then(|items| items.get(2))
+        .ok_or(SynthesisError::AssignmentMissing)?;
+
+    match format {
+        0 => Ok(if matches!(raw_value, Value::Bool(true))
+            || raw_value.as_u64() == Some(1)
+            || raw_value
+                .as_str()
+                .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+                .unwrap_or(false)
+        {
+            BigInt::from(1u8)
+        } else {
+            BigInt::from(0u8)
+        }),
+        1 => {
+            let value = raw_value
+                .as_str()
+                .map(str::to_owned)
+                .or_else(|| raw_value.as_u64().map(|value| value.to_string()))
+                .ok_or(SynthesisError::AssignmentMissing)?;
+            BigInt::from_str(&value).map_err(|_| SynthesisError::AssignmentMissing)
+        }
+        2 => {
+            let value = raw_value.as_str().ok_or(SynthesisError::AssignmentMissing)?;
+            let digits = value.replace('-', "");
+            BigInt::from_str(&digits).map_err(|_| SynthesisError::AssignmentMissing)
+        }
+        3 => {
+            let value = raw_value.as_str().ok_or(SynthesisError::AssignmentMissing)?;
+            BigInt::from_str(value).map_err(|_| SynthesisError::AssignmentMissing)
+        }
+        4 => {
+            let value = raw_value.as_str().ok_or(SynthesisError::AssignmentMissing)?;
+            Ok(bytes_to_bigint(value.as_bytes()))
+        }
+        _ => Err(SynthesisError::AssignmentMissing),
+    }
+}
+
 /// Layout information for the JWT circuit outputs within the witness vector.
 #[derive(Debug, Clone, Copy)]
 pub struct JwtOutputLayout {
-    pub age_claim_start: usize,
-    pub age_claim_len: usize,
+    pub normalized_claim_start: usize,
+    pub normalized_claim_len: usize,
     pub keybinding_x_index: usize,
     pub keybinding_y_index: usize,
 }
 
 impl JwtOutputLayout {
-    pub fn age_claim_range(&self) -> Range<usize> {
-        self.age_claim_start..self.age_claim_start + self.age_claim_len
+    pub fn normalized_claim_range(&self) -> Range<usize> {
+        self.normalized_claim_start..self.normalized_claim_start + self.normalized_claim_len
     }
 }
 
 /// Calculate output signal indices for JWT circuit based on circuit parameters.
 ///
 /// JWT circuit outputs (in order):
-/// 1. `ageClaim[decodedLen]` where `decodedLen = (maxClaimsLength * 3) / 4`
+/// 1. `normalizedClaimValues[maxMatches - 2]`
 /// 2. `KeyBindingX`
 /// 3. `KeyBindingY`
 ///
 /// Parameters: `[maxMessageLength, maxB64PayloadLength, maxMatches, maxSubstringLength, maxClaimsLength]`
 pub fn calculate_jwt_output_indices(
-    _max_matches: usize,
-    max_claims_length: usize,
+    max_matches: usize,
+    _max_claims_length: usize,
 ) -> JwtOutputLayout {
-    let decoded_len = (max_claims_length * 3) / 4;
-    let age_claim_start = 1; // Index 0 is reserved for the constant signal in Circom witness
-    let keybinding_x_index = age_claim_start + decoded_len;
+    let normalized_claim_len = max_matches.saturating_sub(2);
+    let normalized_claim_start = 1; // Index 0 is reserved for the constant signal in Circom witness
+    let keybinding_x_index = normalized_claim_start + normalized_claim_len;
     let keybinding_y_index = keybinding_x_index + 1;
 
     JwtOutputLayout {
-        age_claim_start,
-        age_claim_len: decoded_len,
+        normalized_claim_start,
+        normalized_claim_len,
         keybinding_x_index,
         keybinding_y_index,
     }
@@ -581,10 +666,11 @@ pub fn calculate_jwt_output_indices(
 
 /// Layout information for the Show circuit signals within the witness vector.
 /// Verified from build/show/show.sym:
-///   witness[1] = ageAbove18 (output)
+///   witness[1] = expressionResult (output)
 ///   witness[2] = deviceKeyX (public input)
 ///   witness[3] = deviceKeyY (public input)
-///   witness[7..7+decoded_len] = claim (private input)
+///   witness[7] = predicateLen (private input)
+///   witness[8..8+nClaims-1] = claimValues[0..nClaims-1] (private input)
 #[derive(Debug, Clone, Copy)]
 pub struct ShowWitnessLayout {
     pub device_key_x_index: usize,
@@ -602,21 +688,17 @@ impl ShowWitnessLayout {
 /// Calculate witness indices for Show circuit shared values.
 ///
 /// Show circuit witness layout (from show.sym):
-///   w[1] = ageAbove18 (output)
+///   w[1] = expressionResult (output)
 ///   w[2] = deviceKeyX (public input)
 ///   w[3] = deviceKeyY (public input)
-///   w[4] = currentYear (private)
-///   w[5] = currentMonth (private)
-///   w[6..6+decoded_len] = claim[0..decoded_len-1] (private)
-///
-/// Note: Verified from show.sym - claim[0] at signal_id=7 maps to witness_index=6
-pub fn calculate_show_witness_indices(max_claims_length: usize) -> ShowWitnessLayout {
-    let decoded_len = (max_claims_length * 3) / 4;
+///   w[8..8+nClaims-1] = claimValues[0..nClaims-1] (private)
+pub fn calculate_show_witness_indices(max_matches: usize) -> ShowWitnessLayout {
+    let n_claims = max_matches.saturating_sub(2);
 
     ShowWitnessLayout {
         device_key_x_index: 2,
         device_key_y_index: 3,
-        claim_start: 6,
-        claim_len: decoded_len,
+        claim_start: 7,
+        claim_len: n_claims,
     }
 }

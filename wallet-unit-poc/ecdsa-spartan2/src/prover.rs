@@ -2,6 +2,8 @@
 use std::time::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use std::{fs::File, path::Path};
+#[cfg(feature = "native-witness")]
+use std::{fs, process::Command, time::{SystemTime, UNIX_EPOCH}};
 
 // Path is still needed for function signatures used by non-wasm code
 #[cfg(target_arch = "wasm32")]
@@ -17,7 +19,6 @@ use crate::{
         load_instance, load_proof, load_proving_key, load_shared_blinds, load_verifying_key,
         load_witness, save_instance, save_proof, save_shared_blinds, save_witness,
     },
-    utils::{hashmap_to_json_string, parse_jwt_inputs},
 };
 
 use bellpepper_core::SynthesisError;
@@ -401,22 +402,67 @@ pub fn generate_prepare_witness(
     let json_value: Value =
         serde_json::from_reader(json_file).map_err(|_| SynthesisError::AssignmentMissing)?;
 
-    // Parse inputs using declarative field definitions
-    let inputs = parse_jwt_inputs(&json_value)?;
-
     // Generate witness using witnesscalc
     info!("Generating witness using witnesscalc...");
     let t0 = Instant::now();
 
-    let inputs_json = hashmap_to_json_string(
-        &inputs,
-        config.circuit_size.max_matches(),
-        config.circuit_size.max_substring_length(),
-        config.circuit_size.max_claims_length(),
-    )?;
+    let inputs_json = serde_json::to_string(&json_value).map_err(|_| SynthesisError::AssignmentMissing)?;
 
-    // Generate raw witness bytes
-    let witness_bytes = call_jwt_witness(config.circuit_size.circuit_name(), &inputs_json)?;
+    // Generate raw witness bytes. Fallback to JS witness generation when native witnesscalc fails.
+    let witness_bytes = match call_jwt_witness(config.circuit_size.circuit_name(), &inputs_json) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            eprintln!("Native witnesscalc failed; falling back to JS witness generation");
+
+            let r1cs_path = config.r1cs_path("jwt");
+            let wasm_path = r1cs_path.with_extension("wasm");
+            let generate_witness_js = wasm_path
+                .parent()
+                .ok_or(SynthesisError::AssignmentMissing)?
+                .join("generate_witness.js");
+
+            eprintln!(
+                "JS witness files: wasm={}, script={}",
+                wasm_path.display(),
+                generate_witness_js.display()
+            );
+
+            if !wasm_path.exists() || !generate_witness_js.exists() {
+                return Err(SynthesisError::AssignmentMissing);
+            }
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|_| SynthesisError::AssignmentMissing)?
+                .as_millis();
+            let witness_path = std::env::temp_dir().join(format!(
+                "jwt_witness_{}_{}.wtns",
+                std::process::id(),
+                now
+            ));
+
+            let output = Command::new("node")
+                .arg(&generate_witness_js)
+                .arg(&wasm_path)
+                .arg(&json_path)
+                .arg(&witness_path)
+                .output()
+                .map_err(|_| SynthesisError::AssignmentMissing)?;
+
+            if !output.status.success() {
+                eprintln!(
+                    "JS witness generation failed. stdout:\n{}\nstderr:\n{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                return Err(SynthesisError::Unsatisfiable);
+            }
+
+            let bytes = fs::read(&witness_path).map_err(|_| SynthesisError::AssignmentMissing)?;
+            let _ = fs::remove_file(&witness_path);
+            bytes
+        }
+    };
 
     info!("witnesscalc time: {} ms", t0.elapsed().as_millis());
 
