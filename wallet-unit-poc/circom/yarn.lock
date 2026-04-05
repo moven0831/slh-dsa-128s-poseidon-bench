@@ -1378,17 +1378,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"circom_runtime@npm:0.1.21":
-  version: 0.1.21
-  resolution: "circom_runtime@npm:0.1.21"
-  dependencies:
-    ffjavascript: "npm:0.2.56"
-  bin:
-    calcwit: calcwit.js
-  checksum: 10c0/8488609a2b10767a5f97ef21ed5f522558fd0be5743905575f839d5e09fceac56e9954c7e13394a8e64c0710a12f4c3911962a84fdd8b8b3a669ff180e82237c
-  languageName: node
-  linkType: hard
-
 "circom_runtime@npm:0.1.28":
   version: 0.1.28
   resolution: "circom_runtime@npm:0.1.28"
@@ -2422,7 +2411,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"js-sha3@npm:0.8.0, js-sha3@npm:^0.8.0":
+"js-sha3@npm:0.8.0":
   version: 0.8.0
   resolution: "js-sha3@npm:0.8.0"
   checksum: 10c0/43a21dc7967c871bd2c46cb1c2ae97441a97169f324e509f382d43330d8f75cf2c96dba7c806ab08a425765a9c847efdd4bffbac2d99c3a4f3de6c0218f40533
@@ -3113,18 +3102,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"r1csfile@npm:0.0.41, r1csfile@npm:^0.0.41":
-  version: 0.0.41
-  resolution: "r1csfile@npm:0.0.41"
-  dependencies:
-    "@iden3/bigarray": "npm:0.0.2"
-    "@iden3/binfileutils": "npm:0.0.11"
-    fastfile: "npm:0.0.20"
-    ffjavascript: "npm:0.2.56"
-  checksum: 10c0/93446afea94aa45de5abfe118155d31699d7fb174d41df33f71ced0f6e5155d580d20f6489aeb4afa6f4055deba6078a04301c31a4239a6c3212b04d918c0209
-  languageName: node
-  linkType: hard
-
 "r1csfile@npm:0.0.48, r1csfile@npm:^0.0.48":
   version: 0.0.48
   resolution: "r1csfile@npm:0.0.48"
@@ -3134,6 +3111,18 @@ __metadata:
     fastfile: "npm:0.0.20"
     ffjavascript: "npm:0.3.0"
   checksum: 10c0/ea33804b4b51838603873fe4b4975b47e87fd9faad196024e49c02f4e87a0957e5cb333b9f2ac351db5372a7948bbf019218822a10f6b867b96aed90248e3e84
+  languageName: node
+  linkType: hard
+
+"r1csfile@npm:^0.0.41":
+  version: 0.0.41
+  resolution: "r1csfile@npm:0.0.41"
+  dependencies:
+    "@iden3/bigarray": "npm:0.0.2"
+    "@iden3/binfileutils": "npm:0.0.11"
+    fastfile: "npm:0.0.20"
+    ffjavascript: "npm:0.2.56"
+  checksum: 10c0/93446afea94aa45de5abfe118155d31699d7fb174d41df33f71ced0f6e5155d580d20f6489aeb4afa6f4055deba6078a04301c31a4239a6c3212b04d918c0209
   languageName: node
   linkType: hard
 
@@ -3281,44 +3270,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"snarkjs@https://github.com/sampritipanda/snarkjs.git#fef81fc51d17a734637555c6edbd585ecda02d9e, snarkjs@npm:0.5.0":
-  version: 0.5.0
-  resolution: "snarkjs@https://github.com/sampritipanda/snarkjs.git#commit=fef81fc51d17a734637555c6edbd585ecda02d9e"
-  dependencies:
-    "@iden3/binfileutils": "npm:0.0.11"
-    bfj: "npm:^7.0.2"
-    blake2b-wasm: "npm:^2.4.0"
-    circom_runtime: "npm:0.1.21"
-    ejs: "npm:^3.1.6"
-    fastfile: "npm:0.0.20"
-    ffjavascript: "npm:0.2.56"
-    js-sha3: "npm:^0.8.0"
-    localforage: "npm:^1.10.0"
-    logplease: "npm:^1.2.15"
-    r1csfile: "npm:0.0.41"
-  bin:
-    snarkjs: build/cli.cjs
-  checksum: 10c0/44fc2beaf1a0dd7e89b51178a2f179d29f3e235509018f488603614dba049c51cb6f80eaa94329d2882d1edf61d9bf86d0a98480ccfbd9bf4d3dcdda5008431c
-  languageName: node
-  linkType: hard
-
-"snarkjs@npm:^0.7.3, snarkjs@npm:^0.7.5":
-  version: 0.7.5
-  resolution: "snarkjs@npm:0.7.5"
+"snarkjs@npm:0.7.6":
+  version: 0.7.6
+  resolution: "snarkjs@npm:0.7.6"
   dependencies:
     "@iden3/binfileutils": "npm:0.0.12"
+    "@noble/hashes": "npm:^1.7.1"
     bfj: "npm:^7.0.2"
-    blake2b-wasm: "npm:^2.4.0"
     circom_runtime: "npm:0.1.28"
     ejs: "npm:^3.1.6"
     fastfile: "npm:0.0.20"
     ffjavascript: "npm:0.3.1"
-    js-sha3: "npm:^0.8.0"
     logplease: "npm:^1.2.15"
     r1csfile: "npm:0.0.48"
   bin:
     snarkjs: build/cli.cjs
-  checksum: 10c0/bc9eb1dac9c5248a4952635edc015185c5f9f268f6d2d29b32934e0b08bc284caaeba7fbc6d712ecff8a4e17c66433ba6b2f2ab5d1a6bb4704c30110fb18e9aa
+  checksum: 10c0/d21e3c05ce7462b628623dc1f5397165c346c34566fd0d4b6f899b5f23fb522fc64aea8e45dd861a4e902bb53d9838ac5b3bc15210a34e7e38166d314d565b06
   languageName: node
   linkType: hard
 
