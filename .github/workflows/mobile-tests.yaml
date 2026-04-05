@@ -68,7 +68,7 @@ jobs:
                   name: circuit-r1cs
                   path: wallet-unit-poc/circom/build/rs256/rs256_js/rs256.r1cs
                   retention-days: 1
-    
+
     compile-circuits-macos:
         runs-on: macos-latest
         steps:
@@ -327,16 +327,26 @@ jobs:
 
             - name: Create ZIP of xcframework
               run: |
-                  cd wallet-unit-poc/mobile
-                  zip -r MoproiOSBindings.zip MoproiOSBindings
+                  cd wallet-unit-poc/mobile/MoproiOSBindings
+                  zip -r MoproBindings.xcframework.zip MoproBindings.xcframework
 
-            - name: Upload release assets to GitHub Release
+            - name: Upload release xcframework to GitHub Release
               if: github.event_name == 'push' && github.ref == 'refs/heads/main'
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: latest
                   files: |
-                      wallet-unit-poc/mobile/MoproiOSBindings.zip
+                      wallet-unit-poc/mobile/MoproiOSBindings/MoproBindings.xcframework.zip
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Upload release swift to GitHub Release
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: latest
+                  files: |
+                      wallet-unit-poc/mobile/MoproiOSBindings/mopro.swift
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
