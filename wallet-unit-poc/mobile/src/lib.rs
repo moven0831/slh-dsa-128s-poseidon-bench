@@ -1,12 +1,15 @@
 use ecdsa_spartan2::{
+    circuits::rs256_circuit::{CardSignResponse, Pkcs11InfoResponse},
     load_proof,
     paths::keys::{
         RS256_INSTANCE, RS256_PROOF, RS256_PROVING_KEY, RS256_VERIFYING_KEY, RS256_WITNESS,
     },
-    prover::{prove_circuit, prove_circuit_with_pk, verify_circuit, verify_circuit_with_loaded_data},
+    prover::{
+        prove_circuit, prove_circuit_with_pk, verify_circuit, verify_circuit_with_loaded_data,
+    },
     save_keys,
     setup::{setup_circuit_keys, setup_circuit_keys_no_save},
-    Rs256Circuit, PathConfig,
+    PathConfig, Rs256Circuit,
 };
 use std::path::PathBuf;
 
@@ -90,6 +93,14 @@ impl From<std::io::Error> for ZkProofError {
     }
 }
 
+impl From<serde_json::Error> for ZkProofError {
+    fn from(e: serde_json::Error) -> Self {
+        ZkProofError::InvalidInput {
+            message: e.to_string(),
+        }
+    }
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -111,6 +122,39 @@ fn get_file_size(path: impl AsRef<std::path::Path>) -> Result<u64, ZkProofError>
 // ============================================================================
 // Setup Operation
 // ============================================================================
+
+/// Generate input from API response
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn generate_input(
+    response_string: String,
+    tbs: String,
+    issuer_cert: String,
+    smt_server: Option<String>,
+    issuer_id: String,
+    output_path: String,
+) -> Result<String, ZkProofError> {
+    let response: CardSignResponse = serde_json::from_str(&response_string)?;
+
+    let pkcs11info: Pkcs11InfoResponse = serde_json::from_str(&issuer_cert)?;
+    let issuer_cert = Rs256Circuit::extract_issuer_cert(&pkcs11info).map_err(|e| {
+        ZkProofError::InvalidInput {
+            message: e.to_string(),
+        }
+    })?;
+    Rs256Circuit::generate_input(
+        &response,
+        tbs.as_bytes(),
+        &issuer_cert,
+        smt_server.as_deref(),
+        &issuer_id,
+        &output_path,
+    )
+    .map_err(|e| ZkProofError::InvalidInput {
+        message: e.to_string(),
+    })?;
+
+    Ok(output_path)
+}
 
 /// Setup RS256 circuit keys
 /// Generates proving and verifying keys for the rs256 circuit
@@ -226,11 +270,10 @@ pub fn run_complete_benchmark(
     let prove_ms = start.elapsed().as_millis() as u64;
 
     // Step 3: Verify
-    let proof = load_proof(config.artifact_path(RS256_PROOF)).map_err(|e| {
-        ZkProofError::FileNotFound {
+    let proof =
+        load_proof(config.artifact_path(RS256_PROOF)).map_err(|e| ZkProofError::FileNotFound {
             message: format!("Failed to load proof: {}", e),
-        }
-    })?;
+        })?;
 
     let start = std::time::Instant::now();
     verify_circuit_with_loaded_data(&proof, &vk);
@@ -373,5 +416,32 @@ mod tests {
         );
 
         // tempdir auto-cleans on drop
+    }
+
+    #[test]
+    fn test_generate_input() {
+        let output_path = PathBuf::from("input.json");
+
+        let response_string =
+            include_str!("../../ecdsa-spartan2/tests/testdata/response_sign.json");
+        let tbs = "e775f2805fb993e05a208dbff15d1c1";
+        let issuer_cert = include_str!("../../ecdsa-spartan2/tests/testdata/pkcs11info_withcert.json");
+        // No SMT server — avoids flaky network dependency in unit tests
+        let smt_server = None;
+        let issuer_id = "g2";
+        let result = generate_input(
+            response_string.to_string(),
+            tbs.to_string(),
+            issuer_cert.to_string(),
+            smt_server,
+            issuer_id.to_string(),
+            output_path.to_string_lossy().into_owned(),
+        );
+        assert!(result.is_ok(), "{:?}", result);
+        assert!(
+            output_path.exists(),
+            "expected JSON at {}",
+            output_path.display()
+        );
     }
 }
