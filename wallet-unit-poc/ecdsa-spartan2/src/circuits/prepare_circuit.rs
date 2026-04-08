@@ -14,7 +14,7 @@ use std::{
 };
 
 // Native witness generation via witnesscalc_adapter (disabled for WASM builds)
-#[cfg(feature = "native-witness")]
+#[cfg(all(feature = "native-witness", has_circuit_base))]
 witnesscalc_adapter::witness!(jwt);
 
 #[cfg(all(feature = "native-witness", has_circuit_1k))]
@@ -35,6 +35,7 @@ pub(crate) fn call_jwt_witness(
     inputs_json: &str,
 ) -> Result<Vec<u8>, SynthesisError> {
     let result = match circuit_name {
+        #[cfg(has_circuit_base)]
         "jwt" => jwt_witness(inputs_json),
 
         #[cfg(has_circuit_1k)]
