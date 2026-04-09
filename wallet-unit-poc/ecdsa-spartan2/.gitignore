@@ -6,3 +6,4 @@
 # Test fixtures containing personal certificate data (generate your own via HiPKI)
 /tests/testdata/response_sign.json
 /tests/testdata/pkcs11info_withcert.json
+/tests/testdata/fido_response_sign.json

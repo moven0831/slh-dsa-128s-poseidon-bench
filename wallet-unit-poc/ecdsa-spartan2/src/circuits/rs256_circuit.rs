@@ -73,6 +73,22 @@ pub struct CardSignResponse {
     _version: String,
 }
 
+/// Response from FIDO `/sign` API.
+#[derive(Deserialize)]
+pub struct FidoSignResponse {
+    pub error_code: String,
+    pub error_message: String,
+    pub result: FidoSignResult,
+}
+
+#[derive(Deserialize)]
+pub struct FidoSignResult {
+    pub hashed_id_num: String,
+    pub signed_response: String,
+    pub idp_checksum: String,
+    pub cert: String,
+}
+
 /// Intermediate result from per-certificate RSA input generation.
 struct RsaCircuitInput {
     message: Vec<String>,
@@ -85,10 +101,10 @@ struct RsaCircuitInput {
 
 #[derive(Debug)]
 struct CertOffsets {
-    modulus_offset: usize,     // first real modulus byte (after sign byte)
-    modulus_tag_offset: usize, // where 0x02 INTEGER tag is
-    subject_dn_offset: usize,  // where subject DN starts
-    subject_dn_length: usize,  // length of subject DN
+    modulus_offset: usize,       // first real modulus byte (after sign byte)
+    modulus_tag_offset: usize,   // where 0x02 INTEGER tag is
+    subject_dn_offset: usize,    // where subject DN starts
+    subject_dn_length: usize,    // length of subject DN
     serial_number_offset: usize, // where serial number starts
 }
 // === HiPKI /pkcs11info?withcert=true response structs ===
@@ -218,22 +234,35 @@ impl Rs256Circuit {
     }
 
     /// Verify the card's raw PKCS#1 signature over the TBS data.
-    fn verify_card_signature(
-        response: &CardSignResponse,
+    fn verify_user_cert_signature(
+        user_cert: &Certificate,
+        user_signature_b64: &str,
         tbs: &[u8],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let cert_der = base64::engine::general_purpose::STANDARD.decode(&response.certb64)?;
-        let cert = Certificate::from_der(&cert_der)?;
-
-        let spki_der = cert.tbs_certificate.subject_public_key_info.to_der()?;
+        let spki_der = user_cert.tbs_certificate.subject_public_key_info.to_der()?;
         let rsa_pub = RsaPublicKey::from_public_key_der(&spki_der)?;
 
-        let sig_bytes = base64::engine::general_purpose::STANDARD.decode(&response.signature)?;
+        let sig_bytes = base64::engine::general_purpose::STANDARD.decode(user_signature_b64)?;
         let sig = rsa::pkcs1v15::Signature::try_from(sig_bytes.as_slice())?;
 
         let verifying_key = VerifyingKey::<Sha256>::new(rsa_pub);
         verifying_key.verify(tbs, &sig)?;
         Ok(())
+    }
+
+    pub fn fetch_cert_from_file(path: &str) -> Result<Certificate, Box<dyn std::error::Error>> {
+        let bytes = std::fs::read(path)?;
+        let cert = Certificate::from_der(&bytes)?;
+        Ok(cert)
+    }
+
+    /// Generate user certificate from certb64
+    pub fn generate_user_cert_from_certb64(
+        certb64: &str,
+    ) -> Result<Certificate, Box<dyn std::error::Error>> {
+        let cert_der = base64::engine::general_purpose::STANDARD.decode(certb64)?;
+        let user_cert = Certificate::from_der(&cert_der)?;
+        Ok(user_cert)
     }
 
     // === Main entry points for circuit input generation ===
@@ -243,16 +272,14 @@ impl Rs256Circuit {
     /// This is the primary entry point — accepts already-parsed API responses
     /// (from HiPKI client or test fixtures).
     pub fn generate_input(
-        sign_response: &CardSignResponse,
+        user_cert: &Certificate,
+        user_signature_b64: &str,
         tbs: &[u8],
         issuer_cert: &Certificate,
         smt_server: Option<&str>,
         issuer_id: &str,
         output_path: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let cert_der = base64::engine::general_purpose::STANDARD.decode(&sign_response.certb64)?;
-        let user_cert = Certificate::from_der(&cert_der)?;
-
         let subject_cn = Self::get_attr(&user_cert.tbs_certificate.subject, COMMON_NAME);
         // Strip leading 0x00 padding bytes from DER INTEGER encoding
         let serial_bytes = user_cert.tbs_certificate.serial_number.as_bytes();
@@ -271,8 +298,8 @@ impl Rs256Circuit {
         Self::verify_issuer_signature(issuer_cert, &user_cert)?;
         info!("Issuer signature verified on user cert");
 
-        Self::verify_card_signature(sign_response, tbs)?;
-        info!(card_sn = %sign_response.card_sn, "Card signature verified");
+        Self::verify_user_cert_signature(user_cert, user_signature_b64, tbs)?;
+        info!(user_cert = %user_cert.tbs_certificate.subject, "User cert signature verified");
 
         let smt_inputs = if let Some(server_url) = smt_server {
             info!(url = %server_url, "Fetching SMT proof");
@@ -293,7 +320,7 @@ impl Rs256Circuit {
         let circuit_input = Self::generate_circuit_input(
             &user_cert,
             issuer_cert,
-            &sign_response.signature,
+            &user_signature_b64,
             &issuer_sig_on_user_cert,
             tbs,
             &user_cert_tbs_der,
@@ -318,8 +345,34 @@ impl Rs256Circuit {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let response_string = std::fs::read_to_string(response_path)?;
         let response: CardSignResponse = serde_json::from_str(&response_string)?;
+        let user_cert = Self::generate_user_cert_from_certb64(&response.certb64)?;
+
         Self::generate_input(
-            &response,
+            &user_cert,
+            &response.signature,
+            tbs,
+            issuer_cert,
+            smt_server,
+            issuer_id,
+            output_path,
+        )
+    }
+
+    pub fn generate_input_from_fido_file(
+        response_path: &Path,
+        tbs: &[u8],
+        issuer_cert: &Certificate,
+        smt_server: Option<&str>,
+        issuer_id: &str,
+        output_path: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let response_string = std::fs::read_to_string(response_path)?;
+        let response: FidoSignResponse = serde_json::from_str(&response_string)?;
+        let user_cert = Self::generate_user_cert_from_certb64(&response.result.cert)?;
+
+        Self::generate_input(
+            &user_cert,
+            &response.result.signed_response,
             tbs,
             issuer_cert,
             smt_server,

@@ -8,9 +8,8 @@
 //!   cargo run --release -- rs256 verify
 
 use ecdsa_spartan2::{
-    circuits::rs256_circuit::{Pkcs11InfoResponse, Rs256Circuit},
-    hipki_client,
-    load_proof,
+    circuits::rs256_circuit::Rs256Circuit,
+    hipki_client, load_proof,
     paths::keys::{
         RS256_INSTANCE, RS256_PROOF, RS256_PROVING_KEY, RS256_VERIFYING_KEY, RS256_WITNESS,
     },
@@ -74,6 +73,7 @@ fn main() {
         let mut smt_server: Option<String> = None;
         let mut issuer = "g2".to_string();
         let mut output = "../circom/inputs/rs256/input.json".to_string();
+        let mut fido: bool = false;
 
         let mut i = 2; // skip "rs256 generate-input"
         while i < command_args.len() {
@@ -120,6 +120,9 @@ fn main() {
                         process::exit(1);
                     });
                 }
+                "--fido" | "-f" => {
+                    fido = true;
+                }
                 "--help" | "-h" => {
                     print_generate_input_usage();
                     process::exit(0);
@@ -140,11 +143,10 @@ fn main() {
                 eprintln!("Failed to fetch pkcs11info from {}: {}", hipki_server, e);
                 process::exit(1);
             });
-            let issuer_cert =
-                Rs256Circuit::extract_issuer_cert(&pkcs11info).unwrap_or_else(|e| {
-                    eprintln!("Failed to extract issuer cert: {}", e);
-                    process::exit(1);
-                });
+            let issuer_cert = Rs256Circuit::extract_issuer_cert(&pkcs11info).unwrap_or_else(|e| {
+                eprintln!("Failed to extract issuer cert: {}", e);
+                process::exit(1);
+            });
 
             info!(tbs = %tbs, "Signing TBS via HiPKI");
             let sign_response =
@@ -153,9 +155,37 @@ fn main() {
                     process::exit(1);
                 });
 
+            let user_cert = Rs256Circuit::generate_user_cert_from_certb64(&sign_response.certb64)
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to generate user cert: {}", e);
+                    process::exit(1);
+                });
+
             Rs256Circuit::generate_input(
-                &sign_response,
+                &user_cert,
+                &sign_response.signature,
                 tbs.as_bytes(),
+                &issuer_cert,
+                smt_server.as_deref(),
+                &issuer,
+                &output,
+            )
+        } else if fido {
+            let default_sign = "tests/testdata/fido_response_sign.json";
+            // Download from https://moica.nat.gov.tw/repository/Certs/MOICA-G3.cer
+            let default_cert = "tests/testdata/MOICA-G3.cer";
+            let default_tbs = "e775f2805fb993e05a208dbff15d1c1";
+            info!("Using bundled test fixtures (FIDO mode)");
+
+            let issuer_cert =
+                Rs256Circuit::fetch_cert_from_file(default_cert).unwrap_or_else(|e| {
+                    eprintln!("Failed to fetch issuer cert: {}", e);
+                    process::exit(1);
+                });
+
+            Rs256Circuit::generate_input_from_fido_file(
+                &PathBuf::from(default_sign),
+                default_tbs.as_bytes(),
                 &issuer_cert,
                 smt_server.as_deref(),
                 &issuer,
@@ -164,26 +194,14 @@ fn main() {
         } else {
             // Default mode: use bundled test fixtures
             let default_sign = "tests/testdata/response_sign.json";
-            let default_pkcs11 = "tests/testdata/pkcs11info_withcert.json";
+            // Download from https://moica.nat.gov.tw/repository/Certs/MOICA2.cer
+            let default_cert = "tests/testdata/MOICA2.cer";
             let default_tbs = "e775f2805fb993e05a208dbff15d1c1";
             info!("Using bundled test fixtures (default mode)");
 
-            let pkcs11_string = fs::read_to_string(default_pkcs11).unwrap_or_else(|e| {
-                eprintln!("Failed to read {}: {}", default_pkcs11, e);
-                process::exit(1);
-            });
-            if !std::path::Path::new(default_sign).exists() {
-                eprintln!("Default sign file not found: {}", default_sign);
-                process::exit(1);
-            }
-            let pkcs11info: Pkcs11InfoResponse =
-                serde_json::from_str(&pkcs11_string).unwrap_or_else(|e| {
-                    eprintln!("Failed to parse pkcs11info: {}", e);
-                    process::exit(1);
-                });
             let issuer_cert =
-                Rs256Circuit::extract_issuer_cert(&pkcs11info).unwrap_or_else(|e| {
-                    eprintln!("Failed to extract issuer cert: {}", e);
+                Rs256Circuit::fetch_cert_from_file(default_cert).unwrap_or_else(|e| {
+                    eprintln!("Failed to fetch issuer cert: {}", e);
                     process::exit(1);
                 });
 
@@ -327,7 +345,10 @@ fn run_rs256_benchmark(input_path: Option<PathBuf>) {
     println!("╠════════════════════════════════════════════════╣");
     println!("║ TIMING                                         ║");
     println!("╠════════════════════════════════════════════════╣");
-    println!("║ Witness Gen:              {:>10} ms        ║", witness_gen_ms);
+    println!(
+        "║ Witness Gen:              {:>10} ms        ║",
+        witness_gen_ms
+    );
     println!("║ Setup:                    {:>10} ms        ║", setup_ms);
     println!("║ Prove:                    {:>10} ms        ║", prove_ms);
     println!("║ Verify:                   {:>10} ms        ║", verify_ms);
