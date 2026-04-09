@@ -2974,7 +2974,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"snarkjs@https://github.com/sampritipanda/snarkjs.git#fef81fc51d17a734637555c6edbd585ecda02d9e, snarkjs@npm:0.5.0":
+"snarkjs@github:sampritipanda/snarkjs#fef81fc51d17a734637555c6edbd585ecda02d9e, snarkjs@npm:0.5.0":
   version: 0.5.0
   resolution: "snarkjs@https://github.com/sampritipanda/snarkjs.git#commit=fef81fc51d17a734637555c6edbd585ecda02d9e"
   dependencies:
