@@ -275,7 +275,7 @@ impl<T: RsaKeySize> Sha256RsaCircuit<T> {
         self.input_path
             .as_ref()
             .map(|p| self.path_config.resolve(p))
-            .unwrap_or_else(|| self.path_config.input_json("rs256"))
+            .unwrap_or_else(|| self.path_config.input_json(T::CIRCUIT_NAME))
     }
 
     /// Get the R1CS file path.

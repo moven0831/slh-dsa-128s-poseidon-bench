@@ -106,9 +106,6 @@ jobs:
             - name: Install JS dependencies
               run: cd wallet-unit-poc/circom && yarn
 
-            - name: Compile sha256rsa2048 circuit
-              run: cd wallet-unit-poc/circom && yarn compile:sha256rsa2048
-
             - name: Compile sha256rsa4096 circuit
               run: cd wallet-unit-poc/circom && yarn compile:sha256rsa4096
 
@@ -117,17 +114,8 @@ jobs:
               with:
                   name: circuit-cpp-macos
                   path: |
-                      wallet-unit-poc/circom/build/cpp/sha256rsa2048.cpp
-                      wallet-unit-poc/circom/build/cpp/sha256rsa2048.dat
                       wallet-unit-poc/circom/build/cpp/sha256rsa4096.cpp
                       wallet-unit-poc/circom/build/cpp/sha256rsa4096.dat
-                  retention-days: 1
-
-            - name: Upload sha256rsa2048 R1CS artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: circuit-r1cs-sha256rsa2048-macos
-                  path: wallet-unit-poc/circom/build/sha256rsa2048/sha256rsa2048_js/sha256rsa2048.r1cs
                   retention-days: 1
 
             - name: Upload sha256rsa4096 R1CS artifact
@@ -188,22 +176,12 @@ jobs:
                   restore-keys: |
                       rust-tests-cargo-
 
-            - name: Generate circuit input (sha256rsa2048)
-              run: |
-                  cd wallet-unit-poc/ecdsa-spartan2
-                  cargo run --release --features sha256rsa2048 -- rs256 generate-input
-
             - name: Run e2e flow (sha256rsa2048)
               run: |
                   cd wallet-unit-poc/ecdsa-spartan2
                   cargo run --release --features sha256rsa2048 -- rs256 setup --input ../circom/inputs/sha256rsa2048/input.json
                   cargo run --release --features sha256rsa2048 -- rs256 prove --input ../circom/inputs/sha256rsa2048/input.json
                   cargo run --release --features sha256rsa2048 -- rs256 verify
-
-            - name: Generate circuit input (sha256rsa4096)
-              run: |
-                  cd wallet-unit-poc/ecdsa-spartan2
-                  cargo run --release --features sha256rsa4096 -- rs256 generate-input --fido
 
             - name: Run e2e flow (sha256rsa4096)
               run: |
