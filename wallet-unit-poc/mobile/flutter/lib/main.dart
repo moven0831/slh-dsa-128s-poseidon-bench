@@ -8,10 +8,10 @@ import 'package:mopro_flutter_bindings/src/rust/third_party/openac_mobile_app.da
     show
         BenchmarkResults,
         ProofResult,
-        prove,
-        runCompleteBenchmark,
-        setupKeys,
-        verify;
+        proveFido,
+        runCompleteBenchmarkFido,
+        setupKeysFido,
+        verifyFido;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +23,7 @@ Future<void> main() async {
 /// Copy circuit R1CS files and input data from Flutter assets to documents directory.
 ///
 /// Assets are stored flat in the documents directory:
-///   Documents/rs256.r1cs        (decompressed from .gz)
+///   Documents/sha256rsa4096.r1cs        (decompressed from .gz)
 ///   Documents/rs256_input.json  (copied as-is)
 Future<void> _copyAssetsToDocuments() async {
   try {
@@ -31,7 +31,7 @@ Future<void> _copyAssetsToDocuments() async {
     final basePath = documentsDir.path;
 
     final assets = {
-      'assets/circom/rs256.r1cs.gz': 'rs256.r1cs',
+      'assets/circom/sha256rsa4096.r1cs.gz': 'sha256rsa4096.r1cs',
       'assets/circom/rs256_input.json': 'rs256_input.json',
     };
 
@@ -150,7 +150,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
       switch (taskType) {
         case ProofTaskType.setup:
           final startTime = DateTime.now();
-          final message = await setupKeys(
+          final message = await setupKeysFido(
             documentsPath: documentsPath,
             inputPath: inputPath,
           );
@@ -164,7 +164,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
           break;
 
         case ProofTaskType.prove:
-          final proofResult = await prove(
+          final proofResult = await proveFido(
             documentsPath: documentsPath,
             inputPath: inputPath,
           );
@@ -177,7 +177,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
 
         case ProofTaskType.verify:
           final startTime = DateTime.now();
-          final verifyResult = await verify(
+          final verifyResult = await verifyFido(
             documentsPath: documentsPath,
           );
           final elapsed = DateTime.now().difference(startTime).inMilliseconds;
@@ -221,7 +221,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
       final documentsPath = await _getDocumentsPath();
       final startTime = DateTime.now();
 
-      final results = await runCompleteBenchmark(
+      final results = await runCompleteBenchmarkFido(
         documentsPath: documentsPath,
         inputPath: null,
       );
@@ -265,7 +265,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('zkID - RS256 Proof'),
+        title: const Text('zkID - SHA256RSA4096 Proof'),
         actions: [
           if (_results.isNotEmpty && !_isOperating)
             IconButton(
@@ -329,7 +329,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Run complete RS256 benchmark: setup, prove, and verify. Results include timing and artifact sizes.',
+                      'Run complete SHA256RSA4096 benchmark: setup, prove, and verify. Results include timing and artifact sizes.',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 12),
@@ -377,7 +377,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.setup,
-              label: 'Setup RS256 Keys',
+              label: 'Setup SHA256RSA4096 Keys',
               icon: Icons.key,
               color: Colors.blue,
             ),
@@ -389,7 +389,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.prove,
-              label: 'Prove RS256',
+              label: 'Prove SHA256RSA4096',
               icon: Icons.calculate,
               color: Colors.green,
             ),
@@ -401,7 +401,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.verify,
-              label: 'Verify RS256',
+              label: 'Verify SHA256RSA4096',
               icon: Icons.check_circle,
               color: Colors.teal,
             ),

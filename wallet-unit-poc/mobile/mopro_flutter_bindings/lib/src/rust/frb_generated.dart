@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 2142212675;
+  int get rustContentHash => 1624239740;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -79,26 +79,36 @@ abstract class RustLibApi extends BaseApi {
     required BigInt bytes,
   });
 
+  Future<String> openacMobileAppGenerateInputFido({
+    required String certb64,
+    required String signedResponse,
+    required String tbs,
+    required String issuerCertPath,
+    String? smtServer,
+    required String issuerId,
+    required String outputPath,
+  });
+
   Future<void> openacMobileAppInitApp();
 
   Future<String> openacMobileAppMoproHelloWorld();
 
-  Future<ProofResult> openacMobileAppProve({
+  Future<ProofResult> openacMobileAppProveFido({
     required String documentsPath,
     String? inputPath,
   });
 
-  Future<BenchmarkResults> openacMobileAppRunCompleteBenchmark({
+  Future<BenchmarkResults> openacMobileAppRunCompleteBenchmarkFido({
     required String documentsPath,
     String? inputPath,
   });
 
-  Future<String> openacMobileAppSetupKeys({
+  Future<String> openacMobileAppSetupKeysFido({
     required String documentsPath,
     String? inputPath,
   });
 
-  Future<bool> openacMobileAppVerify({required String documentsPath});
+  Future<bool> openacMobileAppVerifyFido({required String documentsPath});
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_ZkProofError;
@@ -151,6 +161,68 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> openacMobileAppGenerateInputFido({
+    required String certb64,
+    required String signedResponse,
+    required String tbs,
+    required String issuerCertPath,
+    String? smtServer,
+    required String issuerId,
+    required String outputPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(certb64, serializer);
+          sse_encode_String(signedResponse, serializer);
+          sse_encode_String(tbs, serializer);
+          sse_encode_String(issuerCertPath, serializer);
+          sse_encode_opt_String(smtServer, serializer);
+          sse_encode_String(issuerId, serializer);
+          sse_encode_String(outputPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError,
+        ),
+        constMeta: kOpenacMobileAppGenerateInputFidoConstMeta,
+        argValues: [
+          certb64,
+          signedResponse,
+          tbs,
+          issuerCertPath,
+          smtServer,
+          issuerId,
+          outputPath,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kOpenacMobileAppGenerateInputFidoConstMeta =>
+      const TaskConstMeta(
+        debugName: "generate_input_fido",
+        argNames: [
+          "certb64",
+          "signedResponse",
+          "tbs",
+          "issuerCertPath",
+          "smtServer",
+          "issuerId",
+          "outputPath",
+        ],
+      );
+
+  @override
   Future<void> openacMobileAppInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -159,7 +231,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 3,
             port: port_,
           );
         },
@@ -186,7 +258,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 4,
             port: port_,
           );
         },
@@ -205,42 +277,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "mopro_hello_world", argNames: []);
 
   @override
-  Future<ProofResult> openacMobileAppProve({
-    required String documentsPath,
-    String? inputPath,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(documentsPath, serializer);
-          sse_encode_opt_String(inputPath, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 4,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_proof_result,
-          decodeErrorData:
-              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError,
-        ),
-        constMeta: kOpenacMobileAppProveConstMeta,
-        argValues: [documentsPath, inputPath],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kOpenacMobileAppProveConstMeta => const TaskConstMeta(
-    debugName: "prove",
-    argNames: ["documentsPath", "inputPath"],
-  );
-
-  @override
-  Future<BenchmarkResults> openacMobileAppRunCompleteBenchmark({
+  Future<ProofResult> openacMobileAppProveFido({
     required String documentsPath,
     String? inputPath,
   }) {
@@ -258,25 +295,24 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_benchmark_results,
+          decodeSuccessData: sse_decode_proof_result,
           decodeErrorData:
               sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError,
         ),
-        constMeta: kOpenacMobileAppRunCompleteBenchmarkConstMeta,
+        constMeta: kOpenacMobileAppProveFidoConstMeta,
         argValues: [documentsPath, inputPath],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kOpenacMobileAppRunCompleteBenchmarkConstMeta =>
-      const TaskConstMeta(
-        debugName: "run_complete_benchmark",
-        argNames: ["documentsPath", "inputPath"],
-      );
+  TaskConstMeta get kOpenacMobileAppProveFidoConstMeta => const TaskConstMeta(
+    debugName: "prove_fido",
+    argNames: ["documentsPath", "inputPath"],
+  );
 
   @override
-  Future<String> openacMobileAppSetupKeys({
+  Future<BenchmarkResults> openacMobileAppRunCompleteBenchmarkFido({
     required String documentsPath,
     String? inputPath,
   }) {
@@ -294,29 +330,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_String,
+          decodeSuccessData: sse_decode_benchmark_results,
           decodeErrorData:
               sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError,
         ),
-        constMeta: kOpenacMobileAppSetupKeysConstMeta,
+        constMeta: kOpenacMobileAppRunCompleteBenchmarkFidoConstMeta,
         argValues: [documentsPath, inputPath],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kOpenacMobileAppSetupKeysConstMeta => const TaskConstMeta(
-    debugName: "setup_keys",
-    argNames: ["documentsPath", "inputPath"],
-  );
+  TaskConstMeta get kOpenacMobileAppRunCompleteBenchmarkFidoConstMeta =>
+      const TaskConstMeta(
+        debugName: "run_complete_benchmark_fido",
+        argNames: ["documentsPath", "inputPath"],
+      );
 
   @override
-  Future<bool> openacMobileAppVerify({required String documentsPath}) {
+  Future<String> openacMobileAppSetupKeysFido({
+    required String documentsPath,
+    String? inputPath,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(documentsPath, serializer);
+          sse_encode_opt_String(inputPath, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -325,27 +366,61 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData:
+              sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError,
+        ),
+        constMeta: kOpenacMobileAppSetupKeysFidoConstMeta,
+        argValues: [documentsPath, inputPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kOpenacMobileAppSetupKeysFidoConstMeta =>
+      const TaskConstMeta(
+        debugName: "setup_keys_fido",
+        argNames: ["documentsPath", "inputPath"],
+      );
+
+  @override
+  Future<bool> openacMobileAppVerifyFido({required String documentsPath}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(documentsPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
           decodeSuccessData: sse_decode_bool,
           decodeErrorData:
               sse_decode_Auto_Owned_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError,
         ),
-        constMeta: kOpenacMobileAppVerifyConstMeta,
+        constMeta: kOpenacMobileAppVerifyFidoConstMeta,
         argValues: [documentsPath],
         apiImpl: this,
       ),
     );
   }
 
-  TaskConstMeta get kOpenacMobileAppVerifyConstMeta =>
-      const TaskConstMeta(debugName: "verify", argNames: ["documentsPath"]);
+  TaskConstMeta get kOpenacMobileAppVerifyFidoConstMeta => const TaskConstMeta(
+    debugName: "verify_fido",
+    argNames: ["documentsPath"],
+  );
 
   RustArcIncrementStrongCountFnType
-  get rust_arc_increment_strong_count_ZkProofError => wire
-      .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError;
+  get rust_arc_increment_strong_count_ZkProofError =>
+      wire.rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError;
 
   RustArcDecrementStrongCountFnType
-  get rust_arc_decrement_strong_count_ZkProofError => wire
-      .rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError;
+  get rust_arc_decrement_strong_count_ZkProofError =>
+      wire.rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerZkProofError;
 
   @protected
   ZkProofError

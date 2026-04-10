@@ -123,23 +123,21 @@ fn get_file_size(path: impl AsRef<std::path::Path>) -> Result<u64, ZkProofError>
 /// Generate circuit input from a FIDO FidoSignResponse (sha256rsa4096)
 #[cfg_attr(feature = "uniffi", uniffi::export)]
 pub fn generate_input_fido(
-    response_string: String,
+    certb64: String,
+    signed_response: String,
     tbs: String,
-    issuer_cert: String,
+    issuer_cert_path: String,
     smt_server: Option<String>,
     issuer_id: String,
     output_path: String,
 ) -> Result<String, ZkProofError> {
-    let response: FidoSignResponse = serde_json::from_str(&response_string)?;
-    let user_cert =
-        Rs256FidoCircuit::generate_user_cert_from_certb64(&response.result.cert).map_err(|e| {
-            ZkProofError::InvalidInput {
-                message: e.to_string(),
-            }
-        })?;
+    let user_cert = Rs256FidoCircuit::generate_user_cert_from_certb64(&certb64).map_err(|e| {
+        ZkProofError::InvalidInput {
+            message: e.to_string(),
+        }
+    })?;
 
-    let pkcs11info: Pkcs11InfoResponse = serde_json::from_str(&issuer_cert)?;
-    let issuer_cert = Rs256FidoCircuit::extract_issuer_cert(&pkcs11info).map_err(|e| {
+    let issuer_cert = Rs256FidoCircuit::fetch_cert_from_file(&issuer_cert_path).map_err(|e| {
         ZkProofError::InvalidInput {
             message: e.to_string(),
         }
@@ -147,7 +145,7 @@ pub fn generate_input_fido(
 
     Rs256FidoCircuit::generate_input(
         &user_cert,
-        &response.result.signed_response,
+        &signed_response,
         tbs.as_bytes(),
         &issuer_cert,
         smt_server.as_deref(),
@@ -360,8 +358,8 @@ mod tests {
         let dir = tempdir.path().to_path_buf();
 
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let r1cs_src = manifest
-            .join("../circom/build/sha256rsa4096/sha256rsa4096_js/sha256rsa4096.r1cs");
+        let r1cs_src =
+            manifest.join("../circom/build/sha256rsa4096/sha256rsa4096_js/sha256rsa4096.r1cs");
         let input_src = manifest.join("../circom/inputs/sha256rsa4096/input.json");
 
         assert!(
@@ -376,8 +374,7 @@ mod tests {
         );
 
         symlink(&r1cs_src, dir.join("sha256rsa4096.r1cs")).expect("Failed to symlink R1CS");
-        symlink(&input_src, dir.join("sha256rsa4096_input.json"))
-            .expect("Failed to symlink input");
+        symlink(&input_src, dir.join("sha256rsa4096_input.json")).expect("Failed to symlink input");
         std::fs::create_dir(dir.join("keys")).expect("Failed to create keys dir");
 
         // RSA-4096 witness generation is stack-heavy; run in a thread with 64 MB stack.
@@ -395,8 +392,14 @@ mod tests {
         assert!(results.setup_ms > 0, "setup_ms should be > 0");
         assert!(results.prove_ms > 0, "prove_ms should be > 0");
         assert!(results.verify_ms > 0, "verify_ms should be > 0");
-        assert!(results.proving_key_bytes > 0, "proving_key_bytes should be > 0");
-        assert!(results.verifying_key_bytes > 0, "verifying_key_bytes should be > 0");
+        assert!(
+            results.proving_key_bytes > 0,
+            "proving_key_bytes should be > 0"
+        );
+        assert!(
+            results.verifying_key_bytes > 0,
+            "verifying_key_bytes should be > 0"
+        );
         assert!(results.proof_bytes > 0, "proof_bytes should be > 0");
         assert!(results.witness_bytes > 0, "witness_bytes should be > 0");
 
@@ -418,5 +421,33 @@ mod tests {
             BenchmarkResults::format_size(results.proof_bytes),
             BenchmarkResults::format_size(results.witness_bytes),
         );
+    }
+
+    #[ignore]
+    #[test]
+    fn test_generate_input_fido_e2e() {
+        let fido_response_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ecdsa-spartan2/tests/testdata/fido_response_sign.json");
+        let response_string = std::fs::read_to_string(fido_response_path).unwrap();
+        let response: FidoSignResponse = serde_json::from_str(&response_string).unwrap();
+        let certb64 = response.result.cert;
+        let signed_response = response.result.signed_response;
+        let tbs = "e775f2805fb993e05a208dbff15d1c1";
+        let issuer_cert_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ecdsa-spartan2/tests/testdata/MOICA-G3.cer");
+        let smt_server = None;
+        let issuer_id = "g2";
+        let output_path = "circuit_input.json".to_string();
+        let result = generate_input_fido(
+            certb64,
+            signed_response,
+            tbs.to_string(),
+            issuer_cert_path.to_string_lossy().to_string(),
+            smt_server,
+            issuer_id.to_string(),
+            output_path.clone(),
+        )
+        .unwrap();
+        assert!(PathBuf::from(output_path).exists());
     }
 }

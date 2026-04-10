@@ -38,7 +38,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 2142212675;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1624239740;
 
 // Section: executor
 
@@ -74,6 +74,53 @@ fn wire__openac_mobile_app__benchmark_results_format_size_impl(
                 transform_result_sse::<_, ()>((move || {
                     let output_ok = Result::<_, ()>::Ok(
                         openac_mobile_app::BenchmarkResults::format_size(api_bytes),
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__openac_mobile_app__generate_input_fido_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "generate_input_fido",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_certb64 = <String>::sse_decode(&mut deserializer);
+            let api_signed_response = <String>::sse_decode(&mut deserializer);
+            let api_tbs = <String>::sse_decode(&mut deserializer);
+            let api_issuer_cert_path = <String>::sse_decode(&mut deserializer);
+            let api_smt_server = <Option<String>>::sse_decode(&mut deserializer);
+            let api_issuer_id = <String>::sse_decode(&mut deserializer);
+            let api_output_path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ZkProofError>((move || {
+                    let output_ok = openac_mobile_app::generate_input_fido(
+                        api_certb64,
+                        api_signed_response,
+                        api_tbs,
+                        api_issuer_cert_path,
+                        api_smt_server,
+                        api_issuer_id,
+                        api_output_path,
                     )?;
                     Ok(output_ok)
                 })())
@@ -147,7 +194,7 @@ fn wire__openac_mobile_app__mopro_hello_world_impl(
         },
     )
 }
-fn wire__openac_mobile_app__prove_impl(
+fn wire__openac_mobile_app__prove_fido_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -155,78 +202,7 @@ fn wire__openac_mobile_app__prove_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "prove",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_documents_path = <String>::sse_decode(&mut deserializer);
-            let api_input_path = <Option<String>>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, ZkProofError>((move || {
-                    let output_ok = openac_mobile_app::prove(api_documents_path, api_input_path)?;
-                    Ok(output_ok)
-                })())
-            }
-        },
-    )
-}
-fn wire__openac_mobile_app__run_complete_benchmark_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "run_complete_benchmark",
-            port: Some(port_),
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
-        },
-        move || {
-            let message = unsafe {
-                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
-                    ptr_,
-                    rust_vec_len_,
-                    data_len_,
-                )
-            };
-            let mut deserializer =
-                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
-            let api_documents_path = <String>::sse_decode(&mut deserializer);
-            let api_input_path = <Option<String>>::sse_decode(&mut deserializer);
-            deserializer.end();
-            move |context| {
-                transform_result_sse::<_, ZkProofError>((move || {
-                    let output_ok = openac_mobile_app::run_complete_benchmark(
-                        api_documents_path,
-                        api_input_path,
-                    )?;
-                    Ok(output_ok)
-                })())
-            }
-        },
-    )
-}
-fn wire__openac_mobile_app__setup_keys_impl(
-    port_: flutter_rust_bridge::for_generated::MessagePort,
-    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
-    rust_vec_len_: i32,
-    data_len_: i32,
-) {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
-        flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "setup_keys",
+            debug_name: "prove_fido",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -246,14 +222,14 @@ fn wire__openac_mobile_app__setup_keys_impl(
             move |context| {
                 transform_result_sse::<_, ZkProofError>((move || {
                     let output_ok =
-                        openac_mobile_app::setup_keys(api_documents_path, api_input_path)?;
+                        openac_mobile_app::prove_fido(api_documents_path, api_input_path)?;
                     Ok(output_ok)
                 })())
             }
         },
     )
 }
-fn wire__openac_mobile_app__verify_impl(
+fn wire__openac_mobile_app__run_complete_benchmark_fido_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
@@ -261,7 +237,79 @@ fn wire__openac_mobile_app__verify_impl(
 ) {
     FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
-            debug_name: "verify",
+            debug_name: "run_complete_benchmark_fido",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_documents_path = <String>::sse_decode(&mut deserializer);
+            let api_input_path = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ZkProofError>((move || {
+                    let output_ok = openac_mobile_app::run_complete_benchmark_fido(
+                        api_documents_path,
+                        api_input_path,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__openac_mobile_app__setup_keys_fido_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "setup_keys_fido",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_documents_path = <String>::sse_decode(&mut deserializer);
+            let api_input_path = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ZkProofError>((move || {
+                    let output_ok =
+                        openac_mobile_app::setup_keys_fido(api_documents_path, api_input_path)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__openac_mobile_app__verify_fido_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "verify_fido",
             port: Some(port_),
             mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
@@ -279,7 +327,7 @@ fn wire__openac_mobile_app__verify_impl(
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ZkProofError>((move || {
-                    let output_ok = openac_mobile_app::verify(api_documents_path)?;
+                    let output_ok = openac_mobile_app::verify_fido(api_documents_path)?;
                     Ok(output_ok)
                 })())
             }
@@ -456,14 +504,18 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        2 => wire__openac_mobile_app__init_app_impl(port, ptr, rust_vec_len, data_len),
-        3 => wire__openac_mobile_app__mopro_hello_world_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__openac_mobile_app__prove_impl(port, ptr, rust_vec_len, data_len),
-        5 => {
-            wire__openac_mobile_app__run_complete_benchmark_impl(port, ptr, rust_vec_len, data_len)
-        }
-        6 => wire__openac_mobile_app__setup_keys_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__openac_mobile_app__verify_impl(port, ptr, rust_vec_len, data_len),
+        2 => wire__openac_mobile_app__generate_input_fido_impl(port, ptr, rust_vec_len, data_len),
+        3 => wire__openac_mobile_app__init_app_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__openac_mobile_app__mopro_hello_world_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__openac_mobile_app__prove_fido_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__openac_mobile_app__run_complete_benchmark_fido_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        7 => wire__openac_mobile_app__setup_keys_fido_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__openac_mobile_app__verify_fido_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
