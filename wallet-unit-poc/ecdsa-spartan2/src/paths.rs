@@ -131,11 +131,19 @@ impl PathConfig {
 
 // Key file name constants
 pub mod keys {
+    // RSA-2048 (default / HiPKI / card mode)
     pub const RS256_PROVING_KEY: &str = "rs256_proving.key";
     pub const RS256_VERIFYING_KEY: &str = "rs256_verifying.key";
     pub const RS256_PROOF: &str = "rs256_proof.bin";
     pub const RS256_WITNESS: &str = "rs256_witness.bin";
     pub const RS256_INSTANCE: &str = "rs256_instance.bin";
+
+    // RSA-4096 (FIDO mode)
+    pub const RS256_4096_PROVING_KEY: &str = "rs256_4096_proving.key";
+    pub const RS256_4096_VERIFYING_KEY: &str = "rs256_4096_verifying.key";
+    pub const RS256_4096_PROOF: &str = "rs256_4096_proof.bin";
+    pub const RS256_4096_WITNESS: &str = "rs256_4096_witness.bin";
+    pub const RS256_4096_INSTANCE: &str = "rs256_4096_instance.bin";
 }
 
 #[cfg(test)]

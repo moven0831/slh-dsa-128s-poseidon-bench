@@ -17,7 +17,7 @@ wasm = []
 mopro-ffi = "0.3.5"
 thiserror = "2.0.12"
 anyhow = "1.0.99"
-ecdsa-spartan2 = { path = "../ecdsa-spartan2" }
+ecdsa-spartan2 = { path = "../ecdsa-spartan2", features = ["sha256rsa4096"] } # mobile only supports 4096-bit RSA
 
 # SPARTAN2_DEPENDENCIES
 spartan2 = { git = "https://github.com/therealyingtong/Spartan2.git", branch = "zk", default-features = false }

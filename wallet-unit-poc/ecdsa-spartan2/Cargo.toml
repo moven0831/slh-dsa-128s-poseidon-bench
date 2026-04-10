@@ -11,6 +11,11 @@ path = "src/lib.rs"
 name = "ecdsa-spartan2"
 path = "src/main.rs"
 
+[features]
+default = []
+sha256rsa2048 = []
+sha256rsa4096 = []
+
 [dependencies]
 spartan2 = { git = "https://github.com/therealyingtong/Spartan2.git", branch = "zk", default-features = false }
 circom-scotia = { git = "https://github.com/0xVikasRushi/circom-scotia", branch = "main" }

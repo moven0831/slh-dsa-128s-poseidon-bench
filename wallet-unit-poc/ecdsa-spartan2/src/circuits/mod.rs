@@ -1,1 +1,1 @@
-pub mod rs256_circuit;
+pub mod sha256rsa_circuit;

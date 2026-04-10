@@ -33,27 +33,118 @@ use std::{
 };
 use tracing::info;
 use x509_cert::{
-    der::{Reader, SliceReader, Tag, TagNumber},
+    der::{Length, Reader, SliceReader, Tag, TagNumber},
     Certificate,
 };
 
-witnesscalc_adapter::witness!(rs256);
+#[cfg(feature = "sha256rsa2048")]
+witnesscalc_adapter::witness!(sha256rsa2048);
+#[cfg(feature = "sha256rsa4096")]
+witnesscalc_adapter::witness!(sha256rsa4096);
 
-/// RS256 Circuit for single-stage RSA signature verification and age proof.
+// ── RSA key-size marker trait ─────────────────────────────────────────────────
+
+/// Marker trait that carries all compile-time constants and the witness-generation
+/// function for a specific RSA key size.
+///
+/// Implement this trait on a zero-sized marker type (e.g. [`Rsa2048`], [`Rsa4096`])
+/// and use it as the type parameter of [`Sha256RsaCircuit<T>`].
+pub trait RsaKeySize: Send + Sync + Clone + 'static {
+    /// Number of 121-bit limbs that represent the RSA modulus/signature.
+    /// (`k` in `RSAVerifier65537(121, k)`)
+    const RSA_K: usize;
+    /// Circomkit circuit name used to locate the R1CS / witness files.
+    const CIRCUIT_NAME: &'static str;
+    /// Number of public witness values the circuit exposes to Spartan.
+    const NUM_PUBLIC: usize;
+    // Artifact file names (kept here so the type carries its own paths).
+    const PROVING_KEY: &'static str;
+    const VERIFYING_KEY: &'static str;
+    const PROOF: &'static str;
+    const WITNESS: &'static str;
+    const INSTANCE: &'static str;
+    /// Call the witnesscalc-generated witness function for this key size.
+    fn generate_witness_bytes(json: &str) -> Result<Vec<u8>, String>;
+}
+
+/// Marker type for RSA-2048 circuits (`k = 17` limbs of 121 bits).
+#[derive(Debug, Clone, Copy)]
+pub struct Rsa2048;
+
+/// Marker type for RSA-4096 circuits (`k = 34` limbs of 121 bits).
+#[derive(Debug, Clone, Copy)]
+pub struct Rsa4096;
+
+#[allow(unused_variables)]
+impl RsaKeySize for Rsa2048 {
+    const RSA_K: usize = 17;
+    const CIRCUIT_NAME: &'static str = "sha256rsa2048";
+    /// 17 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber) + 1 (subjectDNHash) + 1 (TBS)
+    const NUM_PUBLIC: usize = 21;
+    const PROVING_KEY: &'static str = "rs256_proving.key";
+    const VERIFYING_KEY: &'static str = "rs256_verifying.key";
+    const PROOF: &'static str = "rs256_proof.bin";
+    const WITNESS: &'static str = "rs256_witness.bin";
+    const INSTANCE: &'static str = "rs256_instance.bin";
+
+    fn generate_witness_bytes(json: &str) -> Result<Vec<u8>, String> {
+        #[cfg(feature = "sha256rsa2048")]
+        return sha256rsa2048_witness(json).map_err(|e| e.to_string());
+        #[cfg(not(feature = "sha256rsa2048"))]
+        Err("Feature `sha256rsa2048` is not enabled".to_string())
+    }
+}
+
+#[allow(unused_variables)]
+impl RsaKeySize for Rsa4096 {
+    const RSA_K: usize = 34;
+    const CIRCUIT_NAME: &'static str = "sha256rsa4096";
+    /// 34 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber) + 1 (subjectDNHash) + 1 (TBS)
+    const NUM_PUBLIC: usize = 38;
+    const PROVING_KEY: &'static str = "rs256_4096_proving.key";
+    const VERIFYING_KEY: &'static str = "rs256_4096_verifying.key";
+    const PROOF: &'static str = "rs256_4096_proof.bin";
+    const WITNESS: &'static str = "rs256_4096_witness.bin";
+    const INSTANCE: &'static str = "rs256_4096_instance.bin";
+
+    fn generate_witness_bytes(json: &str) -> Result<Vec<u8>, String> {
+        #[cfg(feature = "sha256rsa4096")]
+        return sha256rsa4096_witness(json).map_err(|e| e.to_string());
+        #[cfg(not(feature = "sha256rsa4096"))]
+        Err("Feature `sha256rsa4096` is not enabled".to_string())
+    }
+}
+
+/// SHA256RSA2048/SHA256RSA4096 Circuit for single-stage RSA signature verification and age proof.
 ///
 /// This circuit combines:
-/// - RSA signature verification (RS256/sha256WithRSAEncryption)
+/// - RSA signature verification (sha256WithRSAEncryption)
 ///
 /// Unlike the ES256 flow which requires Prepare + Show circuits,
 /// RS256 verification is done in a single circuit without device binding.
-#[derive(Debug, Clone)]
-pub struct Rs256Circuit {
+///
+/// The type parameter `T` selects the RSA key size at compile time:
+/// - `Sha256RsaCircuit<Rsa2048>` — RSA-2048, 17 limbs, `sha256rsa2048` circuit
+/// - `Sha256RsaCircuit<Rsa4096>` — RSA-4096, 34 limbs, `sha256rsa4096` circuit
+#[derive(Clone)]
+pub struct Sha256RsaCircuit<T: RsaKeySize> {
     /// Path configuration for resolving file paths
     path_config: PathConfig,
     /// Optional override for input JSON path
     input_path: Option<PathBuf>,
     /// Cached witness for reuse across synthesize and public_values calls
     cached_witness: Arc<Mutex<Option<Vec<Scalar>>>>,
+    _marker: std::marker::PhantomData<T>,
+}
+
+impl<T: RsaKeySize> std::fmt::Debug for Sha256RsaCircuit<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Sha256RsaCircuit")
+            .field("circuit", &T::CIRCUIT_NAME)
+            .field("path_config", &self.path_config)
+            .field("input_path", &self.input_path)
+            .finish()
+    }
 }
 
 /// Response from HiPKI `/sign` API with `signatureType: "PKCS1"`.
@@ -146,23 +237,25 @@ pub struct Pkcs11InfoResponse {
     pub slots: Vec<Pkcs11Slot>,
 }
 
-impl Default for Rs256Circuit {
+impl<T: RsaKeySize> Default for Sha256RsaCircuit<T> {
     fn default() -> Self {
         Self {
             path_config: PathConfig::default(),
             input_path: None,
             cached_witness: Arc::new(Mutex::new(None)),
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
-impl Rs256Circuit {
-    /// Create a new Rs256Circuit with PathConfig and optional input path override.
+impl<T: RsaKeySize> Sha256RsaCircuit<T> {
+    /// Create a new Sha256RsaCircuit with PathConfig and optional input path override.
     pub fn new(path_config: PathConfig, input_path: Option<PathBuf>) -> Self {
         Self {
             path_config,
             input_path,
             cached_witness: Arc::new(Mutex::new(None)),
+            _marker: std::marker::PhantomData,
         }
     }
 
@@ -173,6 +266,7 @@ impl Rs256Circuit {
             path_config: PathConfig::development(),
             input_path: path.into(),
             cached_witness: Arc::new(Mutex::new(None)),
+            _marker: std::marker::PhantomData,
         }
     }
 
@@ -186,7 +280,7 @@ impl Rs256Circuit {
 
     /// Get the R1CS file path.
     fn r1cs_path(&self) -> PathBuf {
-        self.path_config.r1cs_path("rs256")
+        self.path_config.r1cs_path(T::CIRCUIT_NAME)
     }
 
     // === Certificate extraction from PKCS#11 response ===
@@ -328,6 +422,9 @@ impl Rs256Circuit {
             smt_inputs.as_ref(),
         )?;
 
+        if let Some(parent) = std::path::Path::new(output_path).parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         std::fs::write(output_path, serde_json::to_string_pretty(&circuit_input)?)?;
         info!(path = %output_path, "Circuit input written");
         Ok(())
@@ -392,16 +489,15 @@ impl Rs256Circuit {
     ) -> Result<RsaCircuitInput, Box<dyn std::error::Error>> {
         const MAX_MESSAGE_LENGTH: usize = 1536;
         const RSA_N: usize = 121;
-        const RSA_K: usize = 17;
 
         let spki_der = cert.tbs_certificate.subject_public_key_info.to_der()?;
         let rsa_pub = RsaPublicKey::from_public_key_der(&spki_der)?;
         let modulus = BigUint::from_bytes_be(&rsa_pub.n().to_bytes_be());
-        let rsa_modulus = Self::bigint_to_chunks(&modulus, RSA_K, RSA_N);
+        let rsa_modulus = Self::bigint_to_chunks(&modulus, T::RSA_K, RSA_N);
 
         let sig_bytes = base64::engine::general_purpose::STANDARD.decode(signature_b64)?;
         let sig_biguint = BigUint::from_bytes_be(&sig_bytes);
-        let rsa_signature = Self::bigint_to_chunks(&sig_biguint, RSA_K, RSA_N);
+        let rsa_signature = Self::bigint_to_chunks(&sig_biguint, T::RSA_K, RSA_N);
 
         let message = Self::sha256_pad(original_data, MAX_MESSAGE_LENGTH);
         let padded_len = Self::sha256_padded_length(original_data.len());
@@ -619,6 +715,20 @@ impl Rs256Circuit {
         haystack.windows(needle.len()).position(|w| w == needle)
     }
 
+    /// Compute the byte length of a DER header (tag byte + length encoding).
+    fn header_len(header: &der::Header) -> usize {
+        let tag_len = 1usize;
+        let length_val: usize = header.length.try_into().unwrap();
+        let length_encoding = if length_val < 128 {
+            1 // short form
+        } else if length_val < 256 {
+            2 // 0x81 + 1 byte
+        } else {
+            3 // 0x82 + 2 bytes
+        };
+        tag_len + length_encoding
+    }
+
     /// Find serial number offset in TBS DER using ASN.1 parser.
     fn find_serial_offset_in_tbs(tbs_der: &[u8]) -> Result<usize, Box<dyn std::error::Error>> {
         let mut r = SliceReader::new(tbs_der)?;
@@ -626,7 +736,7 @@ impl Rs256Circuit {
         // 1. Consume the outer SEQUENCE header (tag + length bytes)
         let seq_header = r.peek_header()?;
         assert_eq!(seq_header.tag, Tag::Sequence);
-        let seq_header_len: usize = seq_header.encoded_len()?.try_into()?;
+        let seq_header_len = Self::header_len(&seq_header);
         r.read_slice(seq_header_len.try_into()?)?; // advance past tag+length
 
         // 2. Skip optional [0] EXPLICIT version (tag 0xa0) if present
@@ -637,15 +747,16 @@ impl Rs256Circuit {
                 number: TagNumber::N0,
             })
         {
-            let skip: usize = (next.encoded_len()? + next.length)?.try_into()?;
-            r.read_slice(skip.try_into()?)?;
+            // skip header + contents
+            let skip: usize = Self::header_len(&next) + usize::try_from(next.length)?;
+            r.read_slice(Length::new(skip as u16))?;
         }
 
         // 3. Now must be at INTEGER (serial number)
         let serial_header = r.peek_header()?;
-        assert_eq!(serial_header.tag, Tag::Integer); // ← should pass now
+        assert_eq!(serial_header.tag, Tag::Integer);
 
-        let serial_header_len: usize = serial_header.encoded_len()?.try_into()?;
+        let serial_header_len = Self::header_len(&serial_header);
         let tag_pos: usize = r.position().try_into()?;
 
         Ok(tag_pos + serial_header_len) // offset of serial value bytes
@@ -718,9 +829,12 @@ impl Rs256Circuit {
         })?;
 
         // Generate witness using witnesscalc adapter
-        info!("Generating witness using witnesscalc...");
+        info!(
+            "Generating witness using witnesscalc ({})...",
+            T::CIRCUIT_NAME
+        );
         let t0 = Instant::now();
-        let witness_bytes = rs256_witness(&json_string).map_err(|e| {
+        let witness_bytes = T::generate_witness_bytes(&json_string).map_err(|e| {
             eprintln!("Witness generation failed: {}", e);
             SynthesisError::Unsatisfiable
         })?;
@@ -753,7 +867,13 @@ impl Rs256Circuit {
     }
 }
 
-impl SpartanCircuit<E> for Rs256Circuit {
+/// Convenience alias: RSA-2048 circuit for the default (non-FIDO) flow.
+pub type Rs256Circuit = Sha256RsaCircuit<Rsa2048>;
+
+/// Convenience alias: RSA-4096 circuit for the FIDO flow.
+pub type Rs256FidoCircuit = Sha256RsaCircuit<Rsa4096>;
+
+impl<T: RsaKeySize> SpartanCircuit<E> for Sha256RsaCircuit<T> {
     fn synthesize<CS: ConstraintSystem<Scalar>>(
         &self,
         cs: &mut CS,
@@ -794,7 +914,7 @@ impl SpartanCircuit<E> for Rs256Circuit {
 
     /// RS256 circuit public inputs
     fn public_values(&self) -> Result<Vec<Scalar>, SynthesisError> {
-        let num_public = 21; // 17 (rsaModulus limbs) + 1 (smtRoot) + 1 (serialNumber) + 1 (subjectDNHash) + 1 (TBS)
+        let num_public = T::NUM_PUBLIC;
         let witness = self.get_or_generate_witness().ok();
 
         let mut values = Vec::with_capacity(num_public);
