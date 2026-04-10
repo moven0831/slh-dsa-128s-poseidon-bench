@@ -222,8 +222,25 @@ jobs:
                   cd wallet-unit-poc/mobile
                   cargo test --release --no-default-features --lib
 
-            - name: Create ZIP of keys
-              run: zip -r ecdsa-spartan2-keys.zip wallet-unit-poc/ecdsa-spartan2/keys
+            - name: Create ZIP of sha256rsa2048 proving key
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2/keys
+                  zip rs256_proving.key.zip rs256_proving.key
+
+            - name: Create ZIP of sha256rsa2048 verifying key
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2/keys
+                  zip rs256_verifying.key.zip rs256_verifying.key
+
+            - name: Create ZIP of sha256rsa4096 proving key
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2/keys
+                  zip rs256_4096_proving.key.zip rs256_4096_proving.key
+
+            - name: Create ZIP of sha256rsa4096 verifying key
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2/keys
+                  zip rs256_4096_verifying.key.zip rs256_4096_verifying.key
 
             - name: Create ZIP of sha256rsa2048 R1CS artifact
               run: |
@@ -235,12 +252,16 @@ jobs:
                   cd wallet-unit-poc/circom/build/sha256rsa4096/sha256rsa4096_js
                   zip -r sha256rsa4096.r1cs.zip sha256rsa4096.r1cs
 
-            - name: Upload keys ZIP to GitHub Release
+            - name: Upload key ZIPs to GitHub Release
               if: github.event_name == 'push' && github.ref == 'refs/heads/main'
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: latest
-                  files: ./ecdsa-spartan2-keys.zip
+                  files: |
+                      wallet-unit-poc/ecdsa-spartan2/keys/rs256_proving.key.zip
+                      wallet-unit-poc/ecdsa-spartan2/keys/rs256_verifying.key.zip
+                      wallet-unit-poc/ecdsa-spartan2/keys/rs256_4096_proving.key.zip
+                      wallet-unit-poc/ecdsa-spartan2/keys/rs256_4096_verifying.key.zip
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
