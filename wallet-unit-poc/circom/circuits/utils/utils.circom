@@ -344,10 +344,11 @@ template VerifySubjectDN(MAX_CERT_LEN, MAX_SUBJECT_LEN) {
 template VerifySerialNumber(MAX_CERT_LEN, MAX_SERIAL_LEN) {
     signal input cert[MAX_CERT_LEN];
     signal input offset;
-    signal input target;
+    signal input target;  // single big-endian integer
 
-    // Step 0: extract tag byte (offset-2) and length byte (offset-1)
-    // using dot-product selector for dynamic index
+    // -----------------------------------------------------------------------
+    // Step 0: Extract tag byte at (offset-2) and length byte at (offset-1)
+    // -----------------------------------------------------------------------
     component tagEq[MAX_CERT_LEN];
     component lenEq[MAX_CERT_LEN];
     signal tagSelected[MAX_CERT_LEN];
@@ -371,16 +372,29 @@ template VerifySerialNumber(MAX_CERT_LEN, MAX_SERIAL_LEN) {
         lenSum[j+1] <== lenSum[j] + lenSelected[j];
     }
 
-    // Enforce ASN.1 INTEGER tag (0x02) and length (MAX_SERIAL_LEN)
-    signal isIntegerTag;
-    IsEqual()([tagSum[MAX_CERT_LEN], 2]) ==> isIntegerTag;
-    isIntegerTag === 1;  // ✓ was === 0 (wrong)
+    // Enforce ASN.1 INTEGER tag == 0x02
+    component tagCheck = IsEqual();
+    tagCheck.in[0] <== tagSum[MAX_CERT_LEN];
+    tagCheck.in[1] <== 2;
+    tagCheck.out === 1;
 
-    signal isLen;
-    IsEqual()([lenSum[MAX_CERT_LEN], MAX_SERIAL_LEN]) ==> isLen;
-    isLen === 1;  // ✓ was === 0 (wrong)
+    // Extract actual length and enforce 1 <= actual_len <= MAX_SERIAL_LEN
+    signal actual_len;
+    actual_len <== lenSum[MAX_CERT_LEN];
 
-    // Step 1: extract serial bytes at [offset .. offset+MAX_SERIAL_LEN)
+    component lenGtZero = GreaterThan(8);
+    lenGtZero.in[0] <== actual_len;
+    lenGtZero.in[1] <== 0;
+    lenGtZero.out === 1;
+
+    component lenInRange = LessEqThan(8);
+    lenInRange.in[0] <== actual_len;
+    lenInRange.in[1] <== MAX_SERIAL_LEN;
+    lenInRange.out === 1;
+
+    // -----------------------------------------------------------------------
+    // Step 1: Extract raw serial bytes at cert[offset + i]
+    // -----------------------------------------------------------------------
     component isEq[MAX_SERIAL_LEN][MAX_CERT_LEN];
     signal selected[MAX_SERIAL_LEN][MAX_CERT_LEN];
     signal sums[MAX_SERIAL_LEN][MAX_CERT_LEN + 1];
@@ -398,40 +412,67 @@ template VerifySerialNumber(MAX_CERT_LEN, MAX_SERIAL_LEN) {
         raw_bytes[i] <== sums[i][MAX_CERT_LEN];
     }
 
-    // Step 2: reconstruct big-endian integer using COMPILE-TIME powers of 256
-    // value = sum of raw_bytes[i] * 256^(length-1-i)  for i in 0..length
-    //
-    // Since length is dynamic, use isLt mask:
-    // value = sum of raw_bytes[i] * 256^(MAX_SERIAL_LEN-1-i) * isLt[i]
-    // then divide by 256^(MAX_SERIAL_LEN-length) at the end
-    //
-    // SIMPLER: use compile-time powers from LSB side:
-    // treat raw_bytes as little-endian by reversing, then:
-    // value = sum of raw_bytes[length-1-i] * 256^i
-    // but index is dynamic again...
-    //
-    // EASIEST: fixed-length with zero padding already handled by extraction
-    // raw_bytes[i] == 0 for i >= length (from ExtractSubjectDN masking)
-    // so just compute full sum with fixed powers:
+    // -----------------------------------------------------------------------
+    // Step 2: Zero-mask bytes at index >= actual_len
+    // -----------------------------------------------------------------------
+    component iLt[MAX_SERIAL_LEN];
+    signal masked_bytes[MAX_SERIAL_LEN];
 
-    // big-endian: value = b0*256^(N-1) + b1*256^(N-2) + ... + b(N-1)*256^0
-    // use compile-time var for powers
-    signal weighted[MAX_SERIAL_LEN];
-    var power = 1;
-    // compute from LSB (right) to MSB (left)
-    for (var i = MAX_SERIAL_LEN - 1; i >= 0; i--) {
-        weighted[i] <== raw_bytes[i] * power;
-        power = power * 256;
-    }
-
-    // sum all weighted bytes
-    signal total[MAX_SERIAL_LEN + 1];
-    total[0] <== 0;
     for (var i = 0; i < MAX_SERIAL_LEN; i++) {
-        total[i+1] <== total[i] + weighted[i];
+        iLt[i] = LessThan(8);
+        iLt[i].in[0] <== i;
+        iLt[i].in[1] <== actual_len;
+        masked_bytes[i] <== raw_bytes[i] * iLt[i].out;
     }
 
-    total[MAX_SERIAL_LEN] === target;
+    // -----------------------------------------------------------------------
+    // -----------------------------------------------------------------------
+    // Step 3: Reconstruct big-endian integer using actual_len-relative powers
+    // -----------------------------------------------------------------------
+
+    // Precompute compile-time power table: pow256[k] = 256^k
+    var pow256[MAX_SERIAL_LEN + 1];
+    pow256[0] = 1;
+    for (var k = 1; k <= MAX_SERIAL_LEN; k++) {
+        pow256[k] = pow256[k-1] * 256;
+    }
+
+    // For each byte i, its weight is 256^(actual_len - 1 - i)
+    // = pow256[actual_len - 1 - i]
+    // Since actual_len is a signal (dynamic), select from pow256 table dynamically.
+    // weight[i] = sum over k of (pow256[k] * IsEqual()(actual_len - 1 - i, k))
+    //           = sum over k of (pow256[k] * IsEqual()(actual_len, k + 1 + i))
+
+    component powEq[MAX_SERIAL_LEN][MAX_SERIAL_LEN + 1];
+    signal powSelected[MAX_SERIAL_LEN][MAX_SERIAL_LEN + 1];
+    signal powSum[MAX_SERIAL_LEN][MAX_SERIAL_LEN + 2];
+    signal byte_weight[MAX_SERIAL_LEN];
+
+    for (var i = 0; i < MAX_SERIAL_LEN; i++) {
+        powSum[i][0] <== 0;
+        for (var k = 0; k <= MAX_SERIAL_LEN; k++) {
+            powEq[i][k] = IsEqual();
+            powEq[i][k].in[0] <== actual_len;
+            powEq[i][k].in[1] <== k + 1 + i;  // actual_len == k+1+i means weight is 256^k
+            powSelected[i][k] <== pow256[k] * powEq[i][k].out;
+            powSum[i][k+1] <== powSum[i][k] + powSelected[i][k];
+        }
+        byte_weight[i] <== powSum[i][MAX_SERIAL_LEN + 1];
+    }
+
+    // weighted[i] = masked_bytes[i] * 256^(actual_len - 1 - i)
+    signal weighted[MAX_SERIAL_LEN];
+    for (var i = 0; i < MAX_SERIAL_LEN; i++) {
+        weighted[i] <== masked_bytes[i] * byte_weight[i];
+    }
+
+    signal reconSum[MAX_SERIAL_LEN + 1];
+    reconSum[0] <== 0;
+    for (var i = 0; i < MAX_SERIAL_LEN; i++) {
+        reconSum[i+1] <== reconSum[i] + weighted[i];
+    }
+
+    reconSum[MAX_SERIAL_LEN] === target;
 }
 
 /// @title ExtractModulus
