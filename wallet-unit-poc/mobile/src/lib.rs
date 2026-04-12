@@ -1,5 +1,4 @@
 use ecdsa_spartan2::{
-    circuits::sha256rsa_circuit::{FidoSignResponse, Pkcs11InfoResponse},
     load_proof,
     paths::keys::{
         RS256_4096_INSTANCE, RS256_4096_PROOF, RS256_4096_PROVING_KEY, RS256_4096_VERIFYING_KEY,
@@ -57,27 +56,27 @@ impl BenchmarkResults {
 #[derive(Debug)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum ZkProofError {
-    FileNotFound { message: String },
-    ProofGenerationFailed { message: String },
-    VerificationFailed { message: String },
-    InvalidInput { message: String },
-    SetupRequired { message: String },
-    IoError { message: String },
+    FileNotFound { msg: String },
+    ProofGenerationFailed { msg: String },
+    VerificationFailed { msg: String },
+    InvalidInput { msg: String },
+    SetupRequired { msg: String },
+    IoError { msg: String },
 }
 
 impl std::fmt::Display for ZkProofError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ZkProofError::FileNotFound { message } => write!(f, "File not found: {}", message),
-            ZkProofError::ProofGenerationFailed { message } => {
-                write!(f, "Proof generation failed: {}", message)
+            ZkProofError::FileNotFound { msg } => write!(f, "File not found: {}", msg),
+            ZkProofError::ProofGenerationFailed { msg } => {
+                write!(f, "Proof generation failed: {}", msg)
             }
-            ZkProofError::VerificationFailed { message } => {
-                write!(f, "Verification failed: {}", message)
+            ZkProofError::VerificationFailed { msg } => {
+                write!(f, "Verification failed: {}", msg)
             }
-            ZkProofError::InvalidInput { message } => write!(f, "Invalid input: {}", message),
-            ZkProofError::SetupRequired { message } => write!(f, "Setup required: {}", message),
-            ZkProofError::IoError { message } => write!(f, "IO error: {}", message),
+            ZkProofError::InvalidInput { msg } => write!(f, "Invalid input: {}", msg),
+            ZkProofError::SetupRequired { msg } => write!(f, "Setup required: {}", msg),
+            ZkProofError::IoError { msg } => write!(f, "IO error: {}", msg),
         }
     }
 }
@@ -87,7 +86,7 @@ impl std::error::Error for ZkProofError {}
 impl From<std::io::Error> for ZkProofError {
     fn from(e: std::io::Error) -> Self {
         ZkProofError::IoError {
-            message: e.to_string(),
+            msg: e.to_string(),
         }
     }
 }
@@ -95,7 +94,7 @@ impl From<std::io::Error> for ZkProofError {
 impl From<serde_json::Error> for ZkProofError {
     fn from(e: serde_json::Error) -> Self {
         ZkProofError::InvalidInput {
-            message: e.to_string(),
+            msg: e.to_string(),
         }
     }
 }
@@ -111,7 +110,7 @@ fn make_config(documents_path: &str) -> PathConfig {
 fn get_file_size(path: impl AsRef<std::path::Path>) -> Result<u64, ZkProofError> {
     let path = path.as_ref();
     let metadata = std::fs::metadata(path).map_err(|e| ZkProofError::FileNotFound {
-        message: format!("Failed to get file size from '{}': {}", path.display(), e),
+        msg: format!("Failed to get file size from '{}': {}", path.display(), e),
     })?;
     Ok(metadata.len())
 }
@@ -133,13 +132,13 @@ pub fn generate_input_fido(
 ) -> Result<String, ZkProofError> {
     let user_cert = Rs256FidoCircuit::generate_user_cert_from_certb64(&certb64).map_err(|e| {
         ZkProofError::InvalidInput {
-            message: e.to_string(),
+            msg: e.to_string(),
         }
     })?;
 
     let issuer_cert = Rs256FidoCircuit::fetch_cert_from_file(&issuer_cert_path).map_err(|e| {
         ZkProofError::InvalidInput {
-            message: e.to_string(),
+            msg: e.to_string(),
         }
     })?;
 
@@ -153,7 +152,7 @@ pub fn generate_input_fido(
         &output_path,
     )
     .map_err(|e| ZkProofError::InvalidInput {
-        message: e.to_string(),
+        msg: e.to_string(),
     })?;
 
     Ok(output_path)
@@ -260,7 +259,7 @@ pub fn run_complete_benchmark_fido(
         &vk,
     )
     .map_err(|e| ZkProofError::IoError {
-        message: format!("Failed to save keys: {}", e),
+        msg: format!("Failed to save keys: {}", e),
     })?;
 
     // Step 2: Prove
@@ -278,7 +277,7 @@ pub fn run_complete_benchmark_fido(
     // Step 3: Verify
     let proof = load_proof(config.artifact_path(RS256_4096_PROOF)).map_err(|e| {
         ZkProofError::FileNotFound {
-            message: format!("Failed to load proof: {}", e),
+            msg: format!("Failed to load proof: {}", e),
         }
     })?;
 
@@ -319,6 +318,7 @@ pub fn mopro_hello_world() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ecdsa_spartan2::circuits::sha256rsa_circuit::FidoSignResponse;
 
     #[test]
     fn test_mopro_hello_world() {
@@ -438,7 +438,7 @@ mod tests {
         let smt_server = None;
         let issuer_id = "g2";
         let output_path = "circuit_input.json".to_string();
-        let result = generate_input_fido(
+        let _ = generate_input_fido(
             certb64,
             signed_response,
             tbs.to_string(),
