@@ -36,7 +36,7 @@ describe("CertRSA256VerifyWithRevocation", function () {
   >;
 
   before(async function () {
-    const rs256InputPath = path.join(__dirname, "../../inputs/rs256/input.json");
+    const rs256InputPath = path.join(__dirname, "../../inputs/sha256rsa2048/input.json");
     if (!fs.existsSync(rs256InputPath)) {
       console.log("RS256 test input not found at", rs256InputPath, "— skipping");
       this.skip();
@@ -55,7 +55,7 @@ describe("CertRSA256VerifyWithRevocation", function () {
   });
 
   it("should verify RSA cert signature + SMT non-membership", async () => {
-    const rs256InputPath = path.join(__dirname, "../../inputs/rs256/input.json");
+    const rs256InputPath = path.join(__dirname, "../../inputs/sha256rsa2048/input.json");
     const rs256Input = JSON.parse(fs.readFileSync(rs256InputPath, "utf8"));
 
     const proof = await fetchSMTProof(SMT_SERVER, ISSUER_ID, SERIAL_NUMBER);

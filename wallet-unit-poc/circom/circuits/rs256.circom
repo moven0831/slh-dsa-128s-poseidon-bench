@@ -75,7 +75,7 @@ template CertRSA256Verify(maxMessageLength, n, k) {
 /// @param k RSA chunks (17 for 2048-bit)
 /// @param modulusBits   Actual RSA key size in bits (e.g. 2048) — must be
 ///                      divisible by 8. Separate from n*k (e.g. 121*17=2057).
-template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits, maxSubjectDNLength, smtDepth) {
+template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits, maxSubjectDNLength, smtDepth, maxSerialNumberLength) {
     // === Inputs ===
     signal input tbs[maxMessageLength];    // TBS certificate bytes
     signal input tbs_length;                // actual TBS length
@@ -123,8 +123,7 @@ template FullCertRSA256VerifyWithRevocation(maxMessageLength, n, k, modulusBits,
     PackBytes(MAX_TBS_BYTES, maxMessageLength)(tbs) ==> packed_tbs_fields;
     packed_tbs <== packed_tbs_fields[0];
 
-    var MAX_SERIAL_NUMBER_LEN = 16;
-    VerifySerialNumber(maxMessageLength, MAX_SERIAL_NUMBER_LEN)(
+    VerifySerialNumber(maxMessageLength, maxSerialNumberLength)(
         user_cert_zero_padded,
         serial_number_offset,
         serialNumber

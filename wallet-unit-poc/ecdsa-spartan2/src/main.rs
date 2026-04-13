@@ -1,21 +1,46 @@
 //! CLI for running the Spartan-2 RS256 circuit.
 //!
-//! Usage examples:
-//!   cargo run --release -- rs256 generate-input                          # default mode
-//!   cargo run --release -- rs256 generate-input --tbs 123456 --pin 8309  # live mode (HiPKI)
-//!   cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
-//!   cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
-//!   cargo run --release -- rs256 verify
+//! Two RSA key-size variants are supported, selected at build time via Cargo features
+//! and at runtime via the `--fido` flag:
+//!
+//!   | Mode          | Feature flag      | Key size | CA             |
+//!   |---------------|-------------------|----------|----------------|
+//!   | Default/HiPKI | `sha256rsa2048`   | RSA-2048 | MOICA-G2       |
+//!   | FIDO          | `sha256rsa4096`   | RSA-4096 | MOICA-G3       |
+//!
+//! # Generate circuit input
+//!
+//!   # Default mode — RSA-2048, bundled test fixtures
+//!   cargo run --release --features sha256rsa2048 -- rs256 generate-input
+//!
+//!   # Live mode — RSA-2048, calls HiPKI LocalSignServer with a physical card
+//!   cargo run --release --features sha256rsa2048 -- rs256 generate-input --tbs 123456 --pin 830929
+//!
+//!   # FIDO mode — RSA-4096, bundled test fixtures (MOICA-G3)
+//!   cargo run --release --features sha256rsa4096 -- rs256 generate-input --fido
+//!
+//! # Setup / Prove / Verify  (RSA-2048)
+//!
+//!   cargo run --release --features sha256rsa2048 -- rs256 setup  --input ../circom/inputs/sha256rsa2048/input.json
+//!   cargo run --release --features sha256rsa2048 -- rs256 prove  --input ../circom/inputs/sha256rsa2048/input.json
+//!   cargo run --release --features sha256rsa2048 -- rs256 verify
+//!
+//! # Setup / Prove / Verify  (RSA-4096 / FIDO)
+//!
+//!   cargo run --release --features sha256rsa4096 -- rs256 setup  --fido --input ../circom/inputs/sha256rsa4096/input.json
+//!   cargo run --release --features sha256rsa4096 -- rs256 prove  --fido --input ../circom/inputs/sha256rsa4096/input.json
+//!   cargo run --release --features sha256rsa4096 -- rs256 verify --fido
+//!
+//! # Benchmark
+//!
+//!   cargo run --release --features sha256rsa2048 -- rs256 benchmark
+//!   cargo run --release --features sha256rsa4096 -- rs256 benchmark --fido
 
 use ecdsa_spartan2::{
-    circuits::rs256_circuit::{Pkcs11InfoResponse, Rs256Circuit},
-    hipki_client,
-    load_proof,
-    paths::keys::{
-        RS256_INSTANCE, RS256_PROOF, RS256_PROVING_KEY, RS256_VERIFYING_KEY, RS256_WITNESS,
-    },
+    hipki_client, load_proof,
     prove_circuit, prove_circuit_with_pk, run_circuit, save_keys, setup_circuit_keys,
     setup_circuit_keys_no_save, verify_circuit, verify_circuit_with_loaded_data, PathConfig,
+    Rsa2048, Rsa4096, RsaKeySize, Rs256FidoCircuit, Rs256Circuit, Sha256RsaCircuit,
 };
 use std::{env::args, fs, path::PathBuf, process, time::Instant};
 use tracing::info;
@@ -49,6 +74,8 @@ enum CircuitAction {
 #[derive(Debug, Default, Clone)]
 struct CommandOptions {
     input: Option<PathBuf>,
+    /// Use RSA-4096 (FIDO/MOICA-G3) circuit instead of RSA-2048.
+    fido: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +100,8 @@ fn main() {
         let mut hipki_server = hipki_client::default_server_url().to_string();
         let mut smt_server: Option<String> = None;
         let mut issuer = "g2".to_string();
-        let mut output = "../circom/inputs/rs256/input.json".to_string();
+        let mut output = "../circom/inputs/sha256rsa2048/input.json".to_string();
+        let mut fido: bool = false;
 
         let mut i = 2; // skip "rs256 generate-input"
         while i < command_args.len() {
@@ -120,6 +148,9 @@ fn main() {
                         process::exit(1);
                     });
                 }
+                "--fido" | "-f" => {
+                    fido = true;
+                }
                 "--help" | "-h" => {
                     print_generate_input_usage();
                     process::exit(0);
@@ -134,17 +165,23 @@ fn main() {
         }
 
         let result = if let (Some(tbs), Some(pin)) = (tbs_data, pin) {
-            // Live mode: call HiPKI APIs directly
+            // Live mode (RSA-2048): call HiPKI APIs directly.
+            if !cfg!(feature = "sha256rsa2048") {
+                eprintln!(
+                    "Error: live mode requires the `sha256rsa2048` feature. \
+                     Rebuild with --features sha256rsa2048"
+                );
+                process::exit(1);
+            }
             info!(server = %hipki_server, "Fetching cert chain from HiPKI");
             let pkcs11info = hipki_client::fetch_pkcs11info(&hipki_server).unwrap_or_else(|e| {
                 eprintln!("Failed to fetch pkcs11info from {}: {}", hipki_server, e);
                 process::exit(1);
             });
-            let issuer_cert =
-                Rs256Circuit::extract_issuer_cert(&pkcs11info).unwrap_or_else(|e| {
-                    eprintln!("Failed to extract issuer cert: {}", e);
-                    process::exit(1);
-                });
+            let issuer_cert = Rs256Circuit::extract_issuer_cert(&pkcs11info).unwrap_or_else(|e| {
+                eprintln!("Failed to extract issuer cert: {}", e);
+                process::exit(1);
+            });
 
             info!(tbs = %tbs, "Signing TBS via HiPKI");
             let sign_response =
@@ -153,37 +190,69 @@ fn main() {
                     process::exit(1);
                 });
 
+            let user_cert = Rs256Circuit::generate_user_cert_from_certb64(&sign_response.certb64)
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to generate user cert: {}", e);
+                    process::exit(1);
+                });
+
             Rs256Circuit::generate_input(
-                &sign_response,
+                &user_cert,
+                &sign_response.signature,
                 tbs.as_bytes(),
                 &issuer_cert,
                 smt_server.as_deref(),
                 &issuer,
                 &output,
             )
-        } else {
-            // Default mode: use bundled test fixtures
-            let default_sign = "tests/testdata/response_sign.json";
-            let default_pkcs11 = "tests/testdata/pkcs11info_withcert.json";
-            let default_tbs = "e775f2805fb993e05a208dbff15d1c1";
-            info!("Using bundled test fixtures (default mode)");
-
-            let pkcs11_string = fs::read_to_string(default_pkcs11).unwrap_or_else(|e| {
-                eprintln!("Failed to read {}: {}", default_pkcs11, e);
-                process::exit(1);
-            });
-            if !std::path::Path::new(default_sign).exists() {
-                eprintln!("Default sign file not found: {}", default_sign);
+        } else if fido {
+            // FIDO mode uses RSA-4096 (MOICA-G3 CA).
+            if !cfg!(feature = "sha256rsa4096") {
+                eprintln!(
+                    "Error: --fido requires the `sha256rsa4096` feature. \
+                     Rebuild with --features sha256rsa4096"
+                );
                 process::exit(1);
             }
-            let pkcs11info: Pkcs11InfoResponse =
-                serde_json::from_str(&pkcs11_string).unwrap_or_else(|e| {
-                    eprintln!("Failed to parse pkcs11info: {}", e);
+            let default_sign = "tests/testdata/fido_response_sign.json";
+            // Download from https://moica.nat.gov.tw/repository/Certs/MOICA-G3.cer
+            let default_cert = "tests/testdata/MOICA-G3.cer";
+            let default_tbs = "e775f2805fb993e05a208dbff15d1c1";
+            let fido_output = "../circom/inputs/sha256rsa4096/input.json".to_string();
+            info!("Using bundled test fixtures (FIDO / RSA-4096 mode)");
+
+            let issuer_cert =
+                Rs256FidoCircuit::fetch_cert_from_file(default_cert).unwrap_or_else(|e| {
+                    eprintln!("Failed to fetch issuer cert: {}", e);
                     process::exit(1);
                 });
+
+            Rs256FidoCircuit::generate_input_from_fido_file(
+                &PathBuf::from(default_sign),
+                default_tbs.as_bytes(),
+                &issuer_cert,
+                smt_server.as_deref(),
+                &issuer,
+                &fido_output,
+            )
+        } else {
+            // Default mode (RSA-2048): use bundled test fixtures.
+            if !cfg!(feature = "sha256rsa2048") {
+                eprintln!(
+                    "Error: default mode requires the `sha256rsa2048` feature. \
+                     Rebuild with --features sha256rsa2048"
+                );
+                process::exit(1);
+            }
+            let default_sign = "tests/testdata/response_sign.json";
+            // Download from https://moica.nat.gov.tw/repository/Certs/MOICA2.cer
+            let default_cert = "tests/testdata/MOICA2.cer";
+            let default_tbs = "e775f2805fb993e05a208dbff15d1c1";
+            info!("Using bundled test fixtures (default / RSA-2048 mode)");
+
             let issuer_cert =
-                Rs256Circuit::extract_issuer_cert(&pkcs11info).unwrap_or_else(|e| {
-                    eprintln!("Failed to extract issuer cert: {}", e);
+                Rs256Circuit::fetch_cert_from_file(default_cert).unwrap_or_else(|e| {
+                    eprintln!("Failed to fetch issuer cert: {}", e);
                     process::exit(1);
                 });
 
@@ -216,60 +285,86 @@ fn main() {
     execute_rs256(command.action, command.options);
 }
 
-/// Execute RS256 circuit commands (single-stage, no device binding)
+/// Execute RS256 circuit commands — dispatches to the correct key-size variant.
 fn execute_rs256(action: CircuitAction, options: CommandOptions) {
+    if options.fido {
+        if !cfg!(feature = "sha256rsa4096") {
+            eprintln!(
+                "Error: --fido requires the `sha256rsa4096` feature. \
+                 Rebuild with --features sha256rsa4096"
+            );
+            process::exit(1);
+        }
+        execute_rs256_for::<Rsa4096>(action, options);
+    } else {
+        if !cfg!(feature = "sha256rsa2048") {
+            eprintln!(
+                "Error: RS256 circuit commands require the `sha256rsa2048` feature. \
+                 Rebuild with --features sha256rsa2048"
+            );
+            process::exit(1);
+        }
+        execute_rs256_for::<Rsa2048>(action, options);
+    }
+}
+
+/// Generic execute — works for any RSA key size.
+fn execute_rs256_for<T: RsaKeySize>(action: CircuitAction, options: CommandOptions) {
     let path_config = PathConfig::development();
 
     match action {
         CircuitAction::Setup => {
-            info!(input = ?options.input, "Setting up Spartan-2 keys for the RS256 circuit");
-            let circuit = Rs256Circuit::new(path_config.clone(), options.input.clone());
+            info!(input = ?options.input, circuit = T::CIRCUIT_NAME, "Setting up Spartan-2 keys");
+            let circuit = Sha256RsaCircuit::<T>::new(path_config.clone(), options.input);
             setup_circuit_keys(
                 circuit,
-                path_config.key_path(RS256_PROVING_KEY),
-                path_config.key_path(RS256_VERIFYING_KEY),
+                path_config.key_path(T::PROVING_KEY),
+                path_config.key_path(T::VERIFYING_KEY),
             );
         }
         CircuitAction::Run => {
-            let circuit = Rs256Circuit::new(path_config, options.input.clone());
-            info!("Running RS256 circuit with ZK-Spartan");
+            info!(circuit = T::CIRCUIT_NAME, "Running circuit with ZK-Spartan");
+            let circuit = Sha256RsaCircuit::<T>::new(path_config, options.input);
             run_circuit(circuit);
         }
         CircuitAction::Prove => {
-            let circuit = Rs256Circuit::new(path_config.clone(), options.input.clone());
-            info!("Proving RS256 circuit with ZK-Spartan");
+            info!(circuit = T::CIRCUIT_NAME, "Proving circuit with ZK-Spartan");
+            let circuit = Sha256RsaCircuit::<T>::new(path_config.clone(), options.input);
             prove_circuit(
                 circuit,
-                path_config.key_path(RS256_PROVING_KEY),
-                path_config.artifact_path(RS256_INSTANCE),
-                path_config.artifact_path(RS256_WITNESS),
-                path_config.artifact_path(RS256_PROOF),
+                path_config.key_path(T::PROVING_KEY),
+                path_config.artifact_path(T::INSTANCE),
+                path_config.artifact_path(T::WITNESS),
+                path_config.artifact_path(T::PROOF),
             );
         }
         CircuitAction::Verify => {
-            info!("Verifying RS256 proof with ZK-Spartan");
+            info!(circuit = T::CIRCUIT_NAME, "Verifying proof with ZK-Spartan");
             verify_circuit(
-                path_config.artifact_path(RS256_PROOF),
-                path_config.key_path(RS256_VERIFYING_KEY),
+                path_config.artifact_path(T::PROOF),
+                path_config.key_path(T::VERIFYING_KEY),
             );
         }
         CircuitAction::Benchmark => {
-            info!("RS256 benchmark pipeline...");
-            run_rs256_benchmark(options.input);
+            info!(circuit = T::CIRCUIT_NAME, "Running benchmark pipeline");
+            run_rs256_benchmark_for::<T>(options.input);
         }
     }
 }
 
-/// Run benchmark for RS256 single-stage circuit
-fn run_rs256_benchmark(input_path: Option<PathBuf>) {
+/// Run benchmark for a specific RSA key-size circuit.
+fn run_rs256_benchmark_for<T: RsaKeySize>(input_path: Option<PathBuf>) {
     let path_config = PathConfig::development();
 
     println!("\n╔════════════════════════════════════════════════╗");
-    println!("║      RS256 SINGLE-STAGE BENCHMARK PIPELINE     ║");
+    println!(
+        "║  {} BENCHMARK PIPELINE  ║",
+        T::CIRCUIT_NAME.to_uppercase()
+    );
     println!("╚════════════════════════════════════════════════╝\n");
 
     // Step 0: Pre-generate witness while memory is clean
-    let circuit = Rs256Circuit::new(path_config.clone(), input_path.clone());
+    let circuit = Sha256RsaCircuit::<T>::new(path_config.clone(), input_path.clone());
     info!("Pre-generating witness (before setup allocates keys)...");
     let t_witness = Instant::now();
     circuit
@@ -278,7 +373,7 @@ fn run_rs256_benchmark(input_path: Option<PathBuf>) {
     let witness_gen_ms = t_witness.elapsed().as_millis();
     println!("✓ Witness cached: {} ms\n", witness_gen_ms);
 
-    info!("Step 1/3: Setting up RS256 circuit...");
+    info!("Step 1/3: Setting up {} circuit...", T::CIRCUIT_NAME);
     let t0 = Instant::now();
     let (pk, vk) = setup_circuit_keys_no_save(circuit.clone());
     let setup_ms = t0.elapsed().as_millis();
@@ -286,48 +381,51 @@ fn run_rs256_benchmark(input_path: Option<PathBuf>) {
 
     // Save keys
     if let Err(e) = save_keys(
-        path_config.key_path(RS256_PROVING_KEY),
-        path_config.key_path(RS256_VERIFYING_KEY),
+        path_config.key_path(T::PROVING_KEY),
+        path_config.key_path(T::VERIFYING_KEY),
         &pk,
         &vk,
     ) {
-        eprintln!("Failed to save RS256 keys: {}", e);
+        eprintln!("Failed to save {} keys: {}", T::CIRCUIT_NAME, e);
         std::process::exit(1);
     }
 
     // Step 2: Prove
-    info!("Step 2/3: Proving RS256 circuit...");
+    info!("Step 2/3: Proving {} circuit...", T::CIRCUIT_NAME);
     let t0 = Instant::now();
     prove_circuit_with_pk(
         circuit,
         &pk,
-        path_config.artifact_path(RS256_INSTANCE),
-        path_config.artifact_path(RS256_WITNESS),
-        path_config.artifact_path(RS256_PROOF),
+        path_config.artifact_path(T::INSTANCE),
+        path_config.artifact_path(T::WITNESS),
+        path_config.artifact_path(T::PROOF),
     );
     let prove_ms = t0.elapsed().as_millis();
     println!("✓ Proof generated: {} ms\n", prove_ms);
 
     // Step 3: Verify
-    info!("Step 3/3: Verifying RS256 proof...");
-    let proof = load_proof(path_config.artifact_path(RS256_PROOF)).expect("load proof failed");
+    info!("Step 3/3: Verifying {} proof...", T::CIRCUIT_NAME);
+    let proof = load_proof(path_config.artifact_path(T::PROOF)).expect("load proof failed");
     let t0 = Instant::now();
     verify_circuit_with_loaded_data(&proof, &vk);
     let verify_ms = t0.elapsed().as_millis();
     println!("✓ Proof verified: {} ms\n", verify_ms);
 
     // Measure sizes
-    let pk_bytes = get_file_size(&path_config.key_path(RS256_PROVING_KEY).to_string_lossy());
-    let vk_bytes = get_file_size(&path_config.key_path(RS256_VERIFYING_KEY).to_string_lossy());
-    let proof_bytes = get_file_size(&path_config.artifact_path(RS256_PROOF).to_string_lossy());
-    let witness_bytes = get_file_size(&path_config.artifact_path(RS256_WITNESS).to_string_lossy());
+    let pk_bytes = get_file_size(&path_config.key_path(T::PROVING_KEY).to_string_lossy());
+    let vk_bytes = get_file_size(&path_config.key_path(T::VERIFYING_KEY).to_string_lossy());
+    let proof_bytes = get_file_size(&path_config.artifact_path(T::PROOF).to_string_lossy());
+    let witness_bytes = get_file_size(&path_config.artifact_path(T::WITNESS).to_string_lossy());
 
     println!("\n╔════════════════════════════════════════════════╗");
     println!("║         RS256 BENCHMARK RESULTS                ║");
     println!("╠════════════════════════════════════════════════╣");
     println!("║ TIMING                                         ║");
     println!("╠════════════════════════════════════════════════╣");
-    println!("║ Witness Gen:              {:>10} ms        ║", witness_gen_ms);
+    println!(
+        "║ Witness Gen:              {:>10} ms        ║",
+        witness_gen_ms
+    );
     println!("║ Setup:                    {:>10} ms        ║", setup_ms);
     println!("║ Prove:                    {:>10} ms        ║", prove_ms);
     println!("║ Verify:                   {:>10} ms        ║", verify_ms);
@@ -392,23 +490,9 @@ fn parse_circuit_command(tail: &[String]) -> Result<ParsedCommand, String> {
     };
 
     let options_slice = &tail[option_start..];
-    let options = match action {
-        CircuitAction::Run
-        | CircuitAction::Prove
-        | CircuitAction::Setup
-        | CircuitAction::Benchmark => parse_options(options_slice)?,
-        CircuitAction::Verify => ensure_no_options(options_slice)?,
-    };
+    let options = parse_options(options_slice)?;
 
     Ok(ParsedCommand { action, options })
-}
-
-fn ensure_no_options(args: &[String]) -> Result<CommandOptions, String> {
-    if args.is_empty() {
-        Ok(CommandOptions::default())
-    } else {
-        Err(format!("Unexpected options: {}", args.join(" ")))
-    }
 }
 
 fn parse_options(args: &[String]) -> Result<CommandOptions, String> {
@@ -428,6 +512,8 @@ fn parse_options(args: &[String]) -> Result<CommandOptions, String> {
                 return Err("Missing value for --input".into());
             }
             options.input = Some(PathBuf::from(value));
+        } else if arg == "--fido" || arg == "-f" {
+            options.fido = true;
         } else if arg == "--help" || arg == "-h" {
             print_usage();
             process::exit(0);
@@ -456,7 +542,7 @@ Options:
   --hipki-server <url>    HiPKI server URL (default: http://localhost:61161)
   --smt-server <url>      Optional SMT revocation server URL
   --issuer <id>           Issuer ID for SMT lookup (default: g2)
-  --output, -o <path>     Output path (default: ../circom/inputs/rs256/input.json)
+  --output, -o <path>     Output path (default: ../circom/inputs/sha256rsa2048/input.json)
 
 Examples:
   # Default mode (uses bundled test data, no card needed)
@@ -486,13 +572,18 @@ Actions:
 
 Options:
   --input, -i <path>   Override the circuit input JSON (run/prove/setup/benchmark)
+  --fido, -f           Use RSA-4096 circuit (FIDO / MOICA-G3); default is RSA-2048
 
 Examples:
   cargo run --release -- rs256 generate-input
+  cargo run --release -- rs256 generate-input --fido
   cargo run --release -- rs256 generate-input --tbs 123456 --pin 830929
-  cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
-  cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
+  cargo run --release -- rs256 setup --input ../circom/inputs/sha256rsa2048/input.json
+  cargo run --release -- rs256 setup --fido --input ../circom/inputs/sha256rsa4096/input.json
+  cargo run --release -- rs256 prove --input ../circom/inputs/sha256rsa2048/input.json
+  cargo run --release -- rs256 prove --fido --input ../circom/inputs/sha256rsa4096/input.json
   cargo run --release -- rs256 verify
-  cargo run --release -- rs256 benchmark --input ../circom/inputs/rs256/input.json"
+  cargo run --release -- rs256 verify --fido
+  cargo run --release -- rs256 benchmark --input ../circom/inputs/sha256rsa2048/input.json"
     );
 }

@@ -50,23 +50,35 @@ jobs:
             - name: Install JS dependencies
               run: cd wallet-unit-poc/circom && yarn
 
-            - name: Compile RS256 circuit
-              run: cd wallet-unit-poc/circom && yarn compile:rs256
+            - name: Compile sha256rsa2048 circuit
+              run: cd wallet-unit-poc/circom && yarn compile:sha256rsa2048
+
+            - name: Compile sha256rsa4096 circuit
+              run: cd wallet-unit-poc/circom && yarn compile:sha256rsa4096
 
             - name: Upload circuit C++ artifacts
               uses: actions/upload-artifact@v4
               with:
                   name: circuit-cpp
                   path: |
-                      wallet-unit-poc/circom/build/cpp/rs256.cpp
-                      wallet-unit-poc/circom/build/cpp/rs256.dat
+                      wallet-unit-poc/circom/build/cpp/sha256rsa2048.cpp
+                      wallet-unit-poc/circom/build/cpp/sha256rsa2048.dat
+                      wallet-unit-poc/circom/build/cpp/sha256rsa4096.cpp
+                      wallet-unit-poc/circom/build/cpp/sha256rsa4096.dat
                   retention-days: 1
 
-            - name: Upload circuit R1CS artifact
+            - name: Upload sha256rsa2048 R1CS artifact
               uses: actions/upload-artifact@v4
               with:
-                  name: circuit-r1cs
-                  path: wallet-unit-poc/circom/build/rs256/rs256_js/rs256.r1cs
+                  name: circuit-r1cs-sha256rsa2048
+                  path: wallet-unit-poc/circom/build/sha256rsa2048/sha256rsa2048_js/sha256rsa2048.r1cs
+                  retention-days: 1
+
+            - name: Upload sha256rsa4096 R1CS artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: circuit-r1cs-sha256rsa4096
+                  path: wallet-unit-poc/circom/build/sha256rsa4096/sha256rsa4096_js/sha256rsa4096.r1cs
                   retention-days: 1
 
     compile-circuits-macos:
@@ -94,28 +106,32 @@ jobs:
             - name: Install JS dependencies
               run: cd wallet-unit-poc/circom && yarn
 
-            - name: Compile RS256 circuit
-              run: cd wallet-unit-poc/circom && yarn compile:rs256
+            - name: Compile sha256rsa4096 circuit
+              run: cd wallet-unit-poc/circom && yarn compile:sha256rsa4096
 
             - name: Upload circuit C++ artifacts
               uses: actions/upload-artifact@v4
               with:
                   name: circuit-cpp-macos
                   path: |
-                      wallet-unit-poc/circom/build/cpp/rs256.cpp
-                      wallet-unit-poc/circom/build/cpp/rs256.dat
+                      wallet-unit-poc/circom/build/cpp/sha256rsa4096.cpp
+                      wallet-unit-poc/circom/build/cpp/sha256rsa4096.dat
                   retention-days: 1
 
-            - name: Upload circuit R1CS artifact
+            - name: Upload sha256rsa4096 R1CS artifact
               uses: actions/upload-artifact@v4
               with:
-                  name: circuit-r1cs-macos
-                  path: wallet-unit-poc/circom/build/rs256/rs256_js/rs256.r1cs
+                  name: circuit-r1cs-sha256rsa4096-macos
+                  path: wallet-unit-poc/circom/build/sha256rsa4096/sha256rsa4096_js/sha256rsa4096.r1cs
                   retention-days: 1
 
     rust-tests:
         needs: compile-circuits
         runs-on: ubuntu-latest
+
+        permissions:
+            contents: write
+
         steps:
             - uses: actions/checkout@v5
 
@@ -125,11 +141,17 @@ jobs:
                   name: circuit-cpp
                   path: wallet-unit-poc/circom/build/cpp/
 
-            - name: Download circuit R1CS artifact
+            - name: Download sha256rsa2048 R1CS artifact
               uses: actions/download-artifact@v4
               with:
-                  name: circuit-r1cs
-                  path: wallet-unit-poc/circom/build/rs256/rs256_js/
+                  name: circuit-r1cs-sha256rsa2048
+                  path: wallet-unit-poc/circom/build/sha256rsa2048/sha256rsa2048_js/
+
+            - name: Download sha256rsa4096 R1CS artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-r1cs-sha256rsa4096
+                  path: wallet-unit-poc/circom/build/sha256rsa4096/sha256rsa4096_js/
 
             - name: Install system dependencies
               run: |
@@ -154,17 +176,90 @@ jobs:
                   restore-keys: |
                       rust-tests-cargo-
 
-            - name: Run ecdsa-spartan2 e2e flow
+            - name: Run e2e flow (sha256rsa2048)
               run: |
                   cd wallet-unit-poc/ecdsa-spartan2
-                  cargo run --release -- rs256 setup --input ../circom/inputs/rs256/input.json
-                  cargo run --release -- rs256 prove --input ../circom/inputs/rs256/input.json
-                  cargo run --release -- rs256 verify
+                  cargo run --release --features sha256rsa2048 -- rs256 setup --input ../circom/inputs/sha256rsa2048/input.json
+                  cargo run --release --features sha256rsa2048 -- rs256 prove --input ../circom/inputs/sha256rsa2048/input.json
+                  cargo run --release --features sha256rsa2048 -- rs256 verify
+
+            - name: Run e2e flow (sha256rsa4096)
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  cargo run --release --features sha256rsa4096 -- rs256 setup --fido --input ../circom/inputs/sha256rsa4096/input.json
+                  cargo run --release --features sha256rsa4096 -- rs256 prove --fido --input ../circom/inputs/sha256rsa4096/input.json
+                  cargo run --release --features sha256rsa4096 -- rs256 verify --fido
+
+            - name: Run ecdsa-spartan2 unit tests
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  cargo test --release
 
             - name: Run mobile API tests
               run: |
                   cd wallet-unit-poc/mobile
                   cargo test --release --no-default-features --lib
+
+            - name: Create ZIP of sha256rsa2048 proving key
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2/keys
+                  zip rs256_proving.key.zip rs256_proving.key
+
+            - name: Create ZIP of sha256rsa2048 verifying key
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2/keys
+                  zip rs256_verifying.key.zip rs256_verifying.key
+
+            - name: Create ZIP of sha256rsa4096 proving key
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2/keys
+                  zip rs256_4096_proving.key.zip rs256_4096_proving.key
+
+            - name: Create ZIP of sha256rsa4096 verifying key
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2/keys
+                  zip rs256_4096_verifying.key.zip rs256_4096_verifying.key
+
+            - name: Create ZIP of sha256rsa2048 R1CS artifact
+              run: |
+                  cd wallet-unit-poc/circom/build/sha256rsa2048/sha256rsa2048_js
+                  zip -r sha256rsa2048.r1cs.zip sha256rsa2048.r1cs
+
+            - name: Create ZIP of sha256rsa4096 R1CS artifact
+              run: |
+                  cd wallet-unit-poc/circom/build/sha256rsa4096/sha256rsa4096_js
+                  zip -r sha256rsa4096.r1cs.zip sha256rsa4096.r1cs
+
+            - name: Upload key ZIPs to GitHub Release
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: latest
+                  files: |
+                      wallet-unit-poc/ecdsa-spartan2/keys/rs256_proving.key.zip
+                      wallet-unit-poc/ecdsa-spartan2/keys/rs256_verifying.key.zip
+                      wallet-unit-poc/ecdsa-spartan2/keys/rs256_4096_proving.key.zip
+                      wallet-unit-poc/ecdsa-spartan2/keys/rs256_4096_verifying.key.zip
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Upload sha256rsa2048 R1CS to GitHub Release
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: latest
+                  files: wallet-unit-poc/circom/build/sha256rsa2048/sha256rsa2048_js/sha256rsa2048.r1cs.zip
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Upload sha256rsa4096 R1CS to GitHub Release
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: latest
+                  files: wallet-unit-poc/circom/build/sha256rsa4096/sha256rsa4096_js/sha256rsa4096.r1cs.zip
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     build-ios:
         needs: compile-circuits

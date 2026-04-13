@@ -19,7 +19,9 @@ pub mod smt_client;
 pub mod utils;
 
 // Re-export commonly used types and functions
-pub use circuits::rs256_circuit::Rs256Circuit;
+pub use circuits::sha256rsa_circuit::{
+    Rsa2048, Rsa4096, Rs256Circuit, Rs256FidoCircuit, RsaKeySize, Sha256RsaCircuit,
+};
 pub use paths::PathConfig;
 pub use prover::{
     prove_circuit, prove_circuit_in_memory, prove_circuit_with_pk, reblind, reblind_in_memory,

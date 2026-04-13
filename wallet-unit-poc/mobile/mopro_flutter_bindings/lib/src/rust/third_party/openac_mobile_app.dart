@@ -6,37 +6,56 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `fmt`, `fmt`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `fmt`, `fmt`, `from`, `from`
 
 Future<void> initApp() => RustLib.instance.api.openacMobileAppInitApp();
 
-/// Setup RS256 circuit keys
-/// Generates proving and verifying keys for the rs256 circuit
-Future<String> setupKeys({required String documentsPath, String? inputPath}) =>
-    RustLib.instance.api.openacMobileAppSetupKeys(
-      documentsPath: documentsPath,
-      inputPath: inputPath,
-    );
+/// Generate circuit input from a FIDO FidoSignResponse (sha256rsa4096)
+Future<String> generateInputFido({
+  required String certb64,
+  required String signedResponse,
+  required String tbs,
+  required String issuerCertPath,
+  String? smtServer,
+  required String issuerId,
+  required String outputPath,
+}) => RustLib.instance.api.openacMobileAppGenerateInputFido(
+  certb64: certb64,
+  signedResponse: signedResponse,
+  tbs: tbs,
+  issuerCertPath: issuerCertPath,
+  smtServer: smtServer,
+  issuerId: issuerId,
+  outputPath: outputPath,
+);
 
-/// Generate RS256 circuit proof
-/// Runs proving using existing keys
-Future<ProofResult> prove({required String documentsPath, String? inputPath}) =>
-    RustLib.instance.api.openacMobileAppProve(
-      documentsPath: documentsPath,
-      inputPath: inputPath,
-    );
-
-/// Verify RS256 circuit proof
-/// Verifies the proof using the verifying key
-Future<bool> verify({required String documentsPath}) =>
-    RustLib.instance.api.openacMobileAppVerify(documentsPath: documentsPath);
-
-/// Run complete benchmark pipeline for RS256 circuit
-/// Executes setup, prove, and verify with timing and size metrics
-Future<BenchmarkResults> runCompleteBenchmark({
+/// Setup sha256rsa4096 circuit keys (FIDO)
+Future<String> setupKeysFido({
   required String documentsPath,
   String? inputPath,
-}) => RustLib.instance.api.openacMobileAppRunCompleteBenchmark(
+}) => RustLib.instance.api.openacMobileAppSetupKeysFido(
+  documentsPath: documentsPath,
+  inputPath: inputPath,
+);
+
+/// Generate sha256rsa4096 circuit proof (FIDO)
+Future<ProofResult> proveFido({
+  required String documentsPath,
+  String? inputPath,
+}) => RustLib.instance.api.openacMobileAppProveFido(
+  documentsPath: documentsPath,
+  inputPath: inputPath,
+);
+
+/// Verify sha256rsa4096 circuit proof (FIDO)
+Future<bool> verifyFido({required String documentsPath}) => RustLib.instance.api
+    .openacMobileAppVerifyFido(documentsPath: documentsPath);
+
+/// Run complete benchmark pipeline for sha256rsa4096 circuit (FIDO)
+Future<BenchmarkResults> runCompleteBenchmarkFido({
+  required String documentsPath,
+  String? inputPath,
+}) => RustLib.instance.api.openacMobileAppRunCompleteBenchmarkFido(
   documentsPath: documentsPath,
   inputPath: inputPath,
 );

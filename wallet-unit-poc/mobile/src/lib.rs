@@ -1,12 +1,13 @@
 use ecdsa_spartan2::{
     load_proof,
     paths::keys::{
-        RS256_INSTANCE, RS256_PROOF, RS256_PROVING_KEY, RS256_VERIFYING_KEY, RS256_WITNESS,
+        RS256_4096_INSTANCE, RS256_4096_PROOF, RS256_4096_PROVING_KEY, RS256_4096_VERIFYING_KEY,
+        RS256_4096_WITNESS,
     },
-    prover::{prove_circuit, prove_circuit_with_pk, verify_circuit, verify_circuit_with_loaded_data},
+    prover::{prove_circuit_with_pk, verify_circuit_with_loaded_data},
     save_keys,
-    setup::{setup_circuit_keys, setup_circuit_keys_no_save},
-    Rs256Circuit, PathConfig,
+    setup::setup_circuit_keys_no_save,
+    PathConfig, Rs256FidoCircuit,
 };
 use std::path::PathBuf;
 
@@ -55,27 +56,27 @@ impl BenchmarkResults {
 #[derive(Debug)]
 #[cfg_attr(feature = "uniffi", derive(uniffi::Error))]
 pub enum ZkProofError {
-    FileNotFound { message: String },
-    ProofGenerationFailed { message: String },
-    VerificationFailed { message: String },
-    InvalidInput { message: String },
-    SetupRequired { message: String },
-    IoError { message: String },
+    FileNotFound { msg: String },
+    ProofGenerationFailed { msg: String },
+    VerificationFailed { msg: String },
+    InvalidInput { msg: String },
+    SetupRequired { msg: String },
+    IoError { msg: String },
 }
 
 impl std::fmt::Display for ZkProofError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ZkProofError::FileNotFound { message } => write!(f, "File not found: {}", message),
-            ZkProofError::ProofGenerationFailed { message } => {
-                write!(f, "Proof generation failed: {}", message)
+            ZkProofError::FileNotFound { msg } => write!(f, "File not found: {}", msg),
+            ZkProofError::ProofGenerationFailed { msg } => {
+                write!(f, "Proof generation failed: {}", msg)
             }
-            ZkProofError::VerificationFailed { message } => {
-                write!(f, "Verification failed: {}", message)
+            ZkProofError::VerificationFailed { msg } => {
+                write!(f, "Verification failed: {}", msg)
             }
-            ZkProofError::InvalidInput { message } => write!(f, "Invalid input: {}", message),
-            ZkProofError::SetupRequired { message } => write!(f, "Setup required: {}", message),
-            ZkProofError::IoError { message } => write!(f, "IO error: {}", message),
+            ZkProofError::InvalidInput { msg } => write!(f, "Invalid input: {}", msg),
+            ZkProofError::SetupRequired { msg } => write!(f, "Setup required: {}", msg),
+            ZkProofError::IoError { msg } => write!(f, "IO error: {}", msg),
         }
     }
 }
@@ -85,7 +86,15 @@ impl std::error::Error for ZkProofError {}
 impl From<std::io::Error> for ZkProofError {
     fn from(e: std::io::Error) -> Self {
         ZkProofError::IoError {
-            message: e.to_string(),
+            msg: e.to_string(),
+        }
+    }
+}
+
+impl From<serde_json::Error> for ZkProofError {
+    fn from(e: serde_json::Error) -> Self {
+        ZkProofError::InvalidInput {
+            msg: e.to_string(),
         }
     }
 }
@@ -94,44 +103,85 @@ impl From<std::io::Error> for ZkProofError {
 // Helper Functions
 // ============================================================================
 
-/// Create a PathConfig for the given documents path (mobile environment).
 fn make_config(documents_path: &str) -> PathConfig {
     PathConfig::mobile(documents_path)
 }
 
-/// Get the size of a file in bytes
 fn get_file_size(path: impl AsRef<std::path::Path>) -> Result<u64, ZkProofError> {
     let path = path.as_ref();
     let metadata = std::fs::metadata(path).map_err(|e| ZkProofError::FileNotFound {
-        message: format!("Failed to get file size from '{}': {}", path.display(), e),
+        msg: format!("Failed to get file size from '{}': {}", path.display(), e),
     })?;
     Ok(metadata.len())
+}
+
+// ============================================================================
+// Input Generation
+// ============================================================================
+
+/// Generate circuit input from a FIDO FidoSignResponse (sha256rsa4096)
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn generate_input_fido(
+    certb64: String,
+    signed_response: String,
+    tbs: String,
+    issuer_cert_path: String,
+    smt_server: Option<String>,
+    issuer_id: String,
+    output_path: String,
+) -> Result<String, ZkProofError> {
+    let user_cert = Rs256FidoCircuit::generate_user_cert_from_certb64(&certb64).map_err(|e| {
+        ZkProofError::InvalidInput {
+            msg: e.to_string(),
+        }
+    })?;
+
+    let issuer_cert = Rs256FidoCircuit::fetch_cert_from_file(&issuer_cert_path).map_err(|e| {
+        ZkProofError::InvalidInput {
+            msg: e.to_string(),
+        }
+    })?;
+
+    Rs256FidoCircuit::generate_input(
+        &user_cert,
+        &signed_response,
+        tbs.as_bytes(),
+        &issuer_cert,
+        smt_server.as_deref(),
+        &issuer_id,
+        &output_path,
+    )
+    .map_err(|e| ZkProofError::InvalidInput {
+        msg: e.to_string(),
+    })?;
+
+    Ok(output_path)
 }
 
 // ============================================================================
 // Setup Operation
 // ============================================================================
 
-/// Setup RS256 circuit keys
-/// Generates proving and verifying keys for the rs256 circuit
+/// Setup sha256rsa4096 circuit keys (FIDO)
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn setup_keys(
+pub fn setup_keys_fido(
     documents_path: String,
     input_path: Option<String>,
 ) -> Result<String, ZkProofError> {
+    use ecdsa_spartan2::setup::setup_circuit_keys;
     let config = make_config(&documents_path);
-    let circuit = Rs256Circuit::new(config.clone(), input_path.map(PathBuf::from));
+    let circuit = Rs256FidoCircuit::new(config.clone(), input_path.map(PathBuf::from));
 
     let start = std::time::Instant::now();
     setup_circuit_keys(
         circuit,
-        config.key_path(RS256_PROVING_KEY),
-        config.key_path(RS256_VERIFYING_KEY),
+        config.key_path(RS256_4096_PROVING_KEY),
+        config.key_path(RS256_4096_VERIFYING_KEY),
     );
     let elapsed_ms = start.elapsed().as_millis();
 
     Ok(format!(
-        "RS256 circuit keys setup completed in {}ms",
+        "sha256rsa4096 circuit keys setup completed in {}ms",
         elapsed_ms
     ))
 }
@@ -140,27 +190,27 @@ pub fn setup_keys(
 // Prove Operation
 // ============================================================================
 
-/// Generate RS256 circuit proof
-/// Runs proving using existing keys
+/// Generate sha256rsa4096 circuit proof (FIDO)
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn prove(
+pub fn prove_fido(
     documents_path: String,
     input_path: Option<String>,
 ) -> Result<ProofResult, ZkProofError> {
+    use ecdsa_spartan2::prover::prove_circuit;
     let config = make_config(&documents_path);
-    let circuit = Rs256Circuit::new(config.clone(), input_path.map(PathBuf::from));
+    let circuit = Rs256FidoCircuit::new(config.clone(), input_path.map(PathBuf::from));
 
     let start = std::time::Instant::now();
     prove_circuit(
         circuit,
-        config.key_path(RS256_PROVING_KEY),
-        config.artifact_path(RS256_INSTANCE),
-        config.artifact_path(RS256_WITNESS),
-        config.artifact_path(RS256_PROOF),
+        config.key_path(RS256_4096_PROVING_KEY),
+        config.artifact_path(RS256_4096_INSTANCE),
+        config.artifact_path(RS256_4096_WITNESS),
+        config.artifact_path(RS256_4096_PROOF),
     );
     let prove_ms = start.elapsed().as_millis() as u64;
 
-    let proof_size_bytes = get_file_size(&config.artifact_path(RS256_PROOF))?;
+    let proof_size_bytes = get_file_size(&config.artifact_path(RS256_4096_PROOF))?;
 
     Ok(ProofResult {
         prove_ms,
@@ -172,14 +222,14 @@ pub fn prove(
 // Verify Operation
 // ============================================================================
 
-/// Verify RS256 circuit proof
-/// Verifies the proof using the verifying key
+/// Verify sha256rsa4096 circuit proof (FIDO)
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn verify(documents_path: String) -> Result<bool, ZkProofError> {
+pub fn verify_fido(documents_path: String) -> Result<bool, ZkProofError> {
+    use ecdsa_spartan2::prover::verify_circuit;
     let config = make_config(&documents_path);
     verify_circuit(
-        config.artifact_path(RS256_PROOF),
-        config.key_path(RS256_VERIFYING_KEY),
+        config.artifact_path(RS256_4096_PROOF),
+        config.key_path(RS256_4096_VERIFYING_KEY),
     );
     Ok(true)
 }
@@ -188,47 +238,46 @@ pub fn verify(documents_path: String) -> Result<bool, ZkProofError> {
 // Benchmark Operation
 // ============================================================================
 
-/// Run complete benchmark pipeline for RS256 circuit
-/// Executes setup, prove, and verify with timing and size metrics
+/// Run complete benchmark pipeline for sha256rsa4096 circuit (FIDO)
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn run_complete_benchmark(
+pub fn run_complete_benchmark_fido(
     documents_path: String,
     input_path: Option<String>,
 ) -> Result<BenchmarkResults, ZkProofError> {
     let config = make_config(&documents_path);
 
     // Step 1: Setup
-    let circuit = Rs256Circuit::new(config.clone(), input_path.as_ref().map(PathBuf::from));
+    let circuit = Rs256FidoCircuit::new(config.clone(), input_path.as_ref().map(PathBuf::from));
     let start = std::time::Instant::now();
     let (pk, vk) = setup_circuit_keys_no_save(circuit);
     let setup_ms = start.elapsed().as_millis() as u64;
 
     save_keys(
-        config.key_path(RS256_PROVING_KEY),
-        config.key_path(RS256_VERIFYING_KEY),
+        config.key_path(RS256_4096_PROVING_KEY),
+        config.key_path(RS256_4096_VERIFYING_KEY),
         &pk,
         &vk,
     )
     .map_err(|e| ZkProofError::IoError {
-        message: format!("Failed to save keys: {}", e),
+        msg: format!("Failed to save keys: {}", e),
     })?;
 
     // Step 2: Prove
-    let circuit = Rs256Circuit::new(config.clone(), input_path.as_ref().map(PathBuf::from));
+    let circuit = Rs256FidoCircuit::new(config.clone(), input_path.as_ref().map(PathBuf::from));
     let start = std::time::Instant::now();
     prove_circuit_with_pk(
         circuit,
         &pk,
-        config.artifact_path(RS256_INSTANCE),
-        config.artifact_path(RS256_WITNESS),
-        config.artifact_path(RS256_PROOF),
+        config.artifact_path(RS256_4096_INSTANCE),
+        config.artifact_path(RS256_4096_WITNESS),
+        config.artifact_path(RS256_4096_PROOF),
     );
     let prove_ms = start.elapsed().as_millis() as u64;
 
     // Step 3: Verify
-    let proof = load_proof(config.artifact_path(RS256_PROOF)).map_err(|e| {
+    let proof = load_proof(config.artifact_path(RS256_4096_PROOF)).map_err(|e| {
         ZkProofError::FileNotFound {
-            message: format!("Failed to load proof: {}", e),
+            msg: format!("Failed to load proof: {}", e),
         }
     })?;
 
@@ -236,11 +285,10 @@ pub fn run_complete_benchmark(
     verify_circuit_with_loaded_data(&proof, &vk);
     let verify_ms = start.elapsed().as_millis() as u64;
 
-    // Measure file sizes
-    let proving_key_bytes = get_file_size(&config.key_path(RS256_PROVING_KEY))?;
-    let verifying_key_bytes = get_file_size(&config.key_path(RS256_VERIFYING_KEY))?;
-    let proof_bytes = get_file_size(&config.artifact_path(RS256_PROOF))?;
-    let witness_bytes = get_file_size(&config.artifact_path(RS256_WITNESS))?;
+    let proving_key_bytes = get_file_size(&config.key_path(RS256_4096_PROVING_KEY))?;
+    let verifying_key_bytes = get_file_size(&config.key_path(RS256_4096_VERIFYING_KEY))?;
+    let proof_bytes = get_file_size(&config.artifact_path(RS256_4096_PROOF))?;
+    let witness_bytes = get_file_size(&config.artifact_path(RS256_4096_WITNESS))?;
 
     Ok(BenchmarkResults {
         setup_ms,
@@ -270,6 +318,7 @@ pub fn mopro_hello_world() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ecdsa_spartan2::circuits::sha256rsa_circuit::FidoSignResponse;
 
     #[test]
     fn test_mopro_hello_world() {
@@ -277,69 +326,72 @@ mod tests {
     }
 
     #[test]
-    fn test_path_config_mobile_rs256() {
+    fn test_path_config_mobile_rs256_fido() {
         let config = make_config("/app/Documents");
         assert_eq!(
-            config.key_path(RS256_PROVING_KEY),
-            PathBuf::from("/app/Documents/keys/rs256_proving.key")
+            config.key_path(RS256_4096_PROVING_KEY),
+            PathBuf::from("/app/Documents/keys/rs256_4096_proving.key")
         );
         assert_eq!(
-            config.key_path(RS256_VERIFYING_KEY),
-            PathBuf::from("/app/Documents/keys/rs256_verifying.key")
+            config.key_path(RS256_4096_VERIFYING_KEY),
+            PathBuf::from("/app/Documents/keys/rs256_4096_verifying.key")
         );
         assert_eq!(
-            config.artifact_path(RS256_PROOF),
-            PathBuf::from("/app/Documents/keys/rs256_proof.bin")
+            config.artifact_path(RS256_4096_PROOF),
+            PathBuf::from("/app/Documents/keys/rs256_4096_proof.bin")
         );
         assert_eq!(
-            config.artifact_path(RS256_WITNESS),
-            PathBuf::from("/app/Documents/keys/rs256_witness.bin")
+            config.artifact_path(RS256_4096_WITNESS),
+            PathBuf::from("/app/Documents/keys/rs256_4096_witness.bin")
         );
         assert_eq!(
-            config.artifact_path(RS256_INSTANCE),
-            PathBuf::from("/app/Documents/keys/rs256_instance.bin")
+            config.artifact_path(RS256_4096_INSTANCE),
+            PathBuf::from("/app/Documents/keys/rs256_4096_instance.bin")
         );
     }
 
     #[test]
-    fn test_complete_benchmark_e2e() {
+    fn test_complete_benchmark_fido_e2e() {
         use std::os::unix::fs::symlink;
 
         let tempdir = tempfile::tempdir().expect("Failed to create tempdir");
-        let dir = tempdir.path();
+        let dir = tempdir.path().to_path_buf();
 
-        // Resolve source paths relative to this crate's manifest directory
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let r1cs_src = manifest.join("../circom/build/rs256/rs256_js/rs256.r1cs");
-        let input_src = manifest.join("../circom/inputs/rs256/input.json");
+        let r1cs_src =
+            manifest.join("../circom/build/sha256rsa4096/sha256rsa4096_js/sha256rsa4096.r1cs");
+        let input_src = manifest.join("../circom/inputs/sha256rsa4096/input.json");
 
         assert!(
             r1cs_src.exists(),
-            "R1CS not found at {}. Run `yarn compile:rs256` first.",
+            "R1CS not found at {}. Run `yarn compile:sha256rsa4096` first.",
             r1cs_src.display()
         );
         assert!(
             input_src.exists(),
-            "Input JSON not found at {}",
+            "Input JSON not found at {}. Run `cargo run --features sha256rsa4096 -- rs256 generate-input --fido` first.",
             input_src.display()
         );
 
-        // Mobile PathConfig expects flat structure: {dir}/rs256.r1cs, {dir}/rs256_input.json
-        symlink(&r1cs_src, dir.join("rs256.r1cs")).expect("Failed to symlink R1CS");
-        symlink(&input_src, dir.join("rs256_input.json")).expect("Failed to symlink input");
-
-        // Create keys/ subdirectory for output artifacts
+        symlink(&r1cs_src, dir.join("sha256rsa4096.r1cs")).expect("Failed to symlink R1CS");
+        symlink(&input_src, dir.join("sha256rsa4096_input.json")).expect("Failed to symlink input");
         std::fs::create_dir(dir.join("keys")).expect("Failed to create keys dir");
 
-        let results = run_complete_benchmark(dir.to_string_lossy().to_string(), None)
-            .expect("run_complete_benchmark failed");
+        // RSA-4096 witness generation is stack-heavy; run in a thread with 64 MB stack.
+        let dir_str = dir.to_string_lossy().to_string();
+        let results = std::thread::Builder::new()
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || {
+                run_complete_benchmark_fido(dir_str, None)
+                    .expect("run_complete_benchmark_fido failed")
+            })
+            .expect("Failed to spawn thread")
+            .join()
+            .expect("Thread panicked");
 
-        // Verify all timing metrics are positive
         assert!(results.setup_ms > 0, "setup_ms should be > 0");
         assert!(results.prove_ms > 0, "prove_ms should be > 0");
         assert!(results.verify_ms > 0, "verify_ms should be > 0");
-
-        // Verify all size metrics are positive
         assert!(
             results.proving_key_bytes > 0,
             "proving_key_bytes should be > 0"
@@ -351,16 +403,14 @@ mod tests {
         assert!(results.proof_bytes > 0, "proof_bytes should be > 0");
         assert!(results.witness_bytes > 0, "witness_bytes should be > 0");
 
-        // Verify all output files exist in keys/
         let keys_dir = dir.join("keys");
-        assert!(keys_dir.join("rs256_proving.key").exists());
-        assert!(keys_dir.join("rs256_verifying.key").exists());
-        assert!(keys_dir.join("rs256_proof.bin").exists());
-        assert!(keys_dir.join("rs256_witness.bin").exists());
-        assert!(keys_dir.join("rs256_instance.bin").exists());
+        assert!(keys_dir.join("rs256_4096_proving.key").exists());
+        assert!(keys_dir.join("rs256_4096_verifying.key").exists());
+        assert!(keys_dir.join("rs256_4096_proof.bin").exists());
+        assert!(keys_dir.join("rs256_4096_witness.bin").exists());
+        assert!(keys_dir.join("rs256_4096_instance.bin").exists());
 
-        // Print results for CI visibility
-        eprintln!("\n=== Benchmark Results ===");
+        eprintln!("\n=== sha256rsa4096 Benchmark Results ===");
         eprintln!("Setup:  {}ms", results.setup_ms);
         eprintln!("Prove:  {}ms", results.prove_ms);
         eprintln!("Verify: {}ms", results.verify_ms);
@@ -371,7 +421,33 @@ mod tests {
             BenchmarkResults::format_size(results.proof_bytes),
             BenchmarkResults::format_size(results.witness_bytes),
         );
+    }
 
-        // tempdir auto-cleans on drop
+    #[ignore]
+    #[test]
+    fn test_generate_input_fido_e2e() {
+        let fido_response_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ecdsa-spartan2/tests/testdata/fido_response_sign.json");
+        let response_string = std::fs::read_to_string(fido_response_path).unwrap();
+        let response: FidoSignResponse = serde_json::from_str(&response_string).unwrap();
+        let certb64 = response.result.cert;
+        let signed_response = response.result.signed_response;
+        let tbs = "e775f2805fb993e05a208dbff15d1c1";
+        let issuer_cert_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../ecdsa-spartan2/tests/testdata/MOICA-G3.cer");
+        let smt_server = None;
+        let issuer_id = "g2";
+        let output_path = "circuit_input.json".to_string();
+        let _ = generate_input_fido(
+            certb64,
+            signed_response,
+            tbs.to_string(),
+            issuer_cert_path.to_string_lossy().to_string(),
+            smt_server,
+            issuer_id.to_string(),
+            output_path.clone(),
+        )
+        .unwrap();
+        assert!(PathBuf::from(output_path).exists());
     }
 }

@@ -1,5 +1,11 @@
 use std::path::Path;
 
+#[cfg(feature = "sha256rsa2048")]
+const SHA256RSA2048_CIRCUIT_NAME: &str = "sha256rsa2048";
+#[cfg(feature = "sha256rsa4096")]
+const SHA256RSA4096_CIRCUIT_NAME: &str = "sha256rsa4096";
+
+#[allow(unused_variables)]
 fn main() {
     chkstk_stub::build();
 
@@ -39,14 +45,24 @@ fn main() {
         }
     }
 
-    // Stage only rs256 circuit files so build_and_link doesn't try to
-    // compile ES256 circuits (jwt.cpp/show.cpp) that may not exist in CI.
+    // Stage only sha256rsa* circuit files so build_and_link doesn't try to
+    // compile sha256rsa* circuits that may not exist in CI.
     let staging_dir = Path::new(&out_dir).join("circuit_staging");
     std::fs::create_dir_all(&staging_dir).expect("Failed to create staging directory");
 
+    #[cfg(feature = "sha256rsa2048")]
+    stage_circuit(&circuits_dir, &staging_dir, SHA256RSA2048_CIRCUIT_NAME);
+    #[cfg(feature = "sha256rsa4096")]
+    stage_circuit(&circuits_dir, &staging_dir, SHA256RSA4096_CIRCUIT_NAME);
+
+    witnesscalc_adapter::build_and_link(staging_dir.to_str().unwrap());
+}
+
+#[allow(unused)]
+fn stage_circuit(circuits_dir: &Path, staging_dir: &Path, circuit_name: &str) {
     for ext in &["cpp", "dat"] {
-        let src = circuits_dir.join(format!("rs256.{}", ext));
-        let dst = staging_dir.join(format!("rs256.{}", ext));
+        let src = circuits_dir.join(format!("{}.{}", circuit_name, ext));
+        let dst = staging_dir.join(format!("{}.{}", circuit_name, ext));
         if src.exists() {
             std::fs::copy(&src, &dst).unwrap_or_else(|e| {
                 panic!(
@@ -58,11 +74,10 @@ fn main() {
             });
         } else {
             panic!(
-                "Required circuit file not found: {}. Run `yarn compile:rs256` in the circom directory first.",
-                src.display()
+                "Required circuit file not found: {}. Run `yarn compile:{}` in the circom directory first.",
+                src.display(),
+                circuit_name
             );
         }
     }
-
-    witnesscalc_adapter::build_and_link(staging_dir.to_str().unwrap());
 }
