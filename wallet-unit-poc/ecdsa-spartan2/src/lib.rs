@@ -14,6 +14,7 @@ pub mod circuits;
 pub mod hipki_client;
 pub mod paths;
 pub mod prover;
+pub mod reader;
 pub mod setup;
 pub mod smt_client;
 pub mod utils;
