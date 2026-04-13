@@ -351,6 +351,20 @@ mod tests {
     }
 
     #[test]
+    fn test_prove_verify_fido() -> Result<(), Box<dyn std::error::Error>> {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let documents_path = manifest.join("../ecdsa-spartan2");
+        let input_src = manifest.join("../circom/inputs/sha256rsa4096/input.json");
+        prove_fido(
+            documents_path.to_string_lossy().to_string(),
+            Some(input_src.to_string_lossy().to_string()),
+        )?;
+        let verify_result = verify_fido(documents_path.to_string_lossy().to_string())?;
+        assert!(verify_result);
+        Ok(())
+    }
+
+    #[test]
     fn test_complete_benchmark_fido_e2e() {
         use std::os::unix::fs::symlink;
 
