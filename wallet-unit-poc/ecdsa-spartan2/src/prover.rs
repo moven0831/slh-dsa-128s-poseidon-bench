@@ -66,11 +66,11 @@ pub fn prove_circuit<C: SpartanCircuit<E> + Clone + std::fmt::Debug>(
 ) {
     let t0 = Instant::now();
     let pk = load_proving_key(&pk_path).expect("load proving key failed");
-    let load_pk_ms = t0.elapsed().as_millis();
-
-    info!("ZK-Spartan load proving key: {} ms", load_pk_ms);
+    info!("ZK-Spartan load proving key: {} ms", t0.elapsed().as_millis());
+    drop(pk_path);
 
     prove_circuit_with_pk(circuit, &pk, instance_path, witness_path, proof_path);
+    drop(pk);
 }
 
 /// Only run the proving part of the circuit using ZK-Spartan with a pre-loaded proving key
@@ -110,37 +110,37 @@ pub fn prove_circuit_with_pk<C: SpartanCircuit<E> + Clone + std::fmt::Debug>(
         &mut transcript,
     )
     .unwrap();
+    drop(prep_snark);
+    drop(circuit);
 
     // generate a witness and proof
     let res = R1CSSNARK::<E>::prove_inner(&pk, &instance, &witness, &mut transcript).unwrap();
     let prove_ms = t0.elapsed().as_millis();
 
     info!("ZK-Spartan prove: {} ms", prove_ms);
-
-    let total_ms = prep_ms + prove_ms;
-
     info!(
         "ZK-Spartan prep_prove: ({} ms) + prove: ({} ms) = TOTAL: {} ms",
-        prep_ms, prove_ms, total_ms
+        prep_ms, prove_ms, prep_ms + prove_ms
     );
 
-    // Save the instance to file
+    // Save instance and witness, then drop them before serialising the proof.
     if let Err(e) = save_instance(instance_path, &instance) {
         eprintln!("Failed to save instance: {}", e);
         std::process::exit(1);
     }
+    drop(instance);
 
-    // Save the witness to file
     if let Err(e) = save_witness(witness_path, &witness) {
         eprintln!("Failed to save witness: {}", e);
         std::process::exit(1);
     }
+    drop(witness);
 
-    // Save the proof to file
     if let Err(e) = save_proof(proof_path, &res) {
         eprintln!("Failed to save proof: {}", e);
         std::process::exit(1);
     }
+    drop(res);
 }
 
 pub fn reblind<C: SpartanCircuit<E>>(

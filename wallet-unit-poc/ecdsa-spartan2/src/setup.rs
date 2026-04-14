@@ -84,6 +84,7 @@ pub fn load_proving_key(
     let pk_mmap = unsafe { MmapOptions::new().map(&pk_file)? };
     let pk: <R1CSSNARK<E> as R1CSSNARKTrait<E>>::ProverKey =
         bincode::deserialize_from(Cursor::new(&pk_mmap[..]))?;
+    drop(pk_mmap);
     Ok(pk)
 }
 
@@ -94,6 +95,7 @@ pub fn load_verifying_key(
     let vk_mmap = unsafe { MmapOptions::new().map(&vk_file)? };
     let vk: <R1CSSNARK<E> as R1CSSNARKTrait<E>>::VerifierKey =
         bincode::deserialize_from(Cursor::new(&vk_mmap[..]))?;
+    drop(vk_mmap);
     Ok(vk)
 }
 

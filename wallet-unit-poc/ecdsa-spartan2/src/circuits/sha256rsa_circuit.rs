@@ -7,7 +7,8 @@
 use crate::{paths::PathConfig, utils::parse_witness, Scalar, E};
 use base64::Engine;
 use bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
-use circom_scotia::{reader::load_r1cs, synthesize};
+use crate::reader::load_r1cs_mmap;
+use circom_scotia::synthesize;
 use const_oid::db::rfc4519::*;
 use der::Encode;
 use der::{
@@ -828,16 +829,37 @@ impl<T: RsaKeySize> Sha256RsaCircuit<T> {
             SynthesisError::AssignmentMissing
         })?;
 
-        // Generate witness using witnesscalc adapter
+        // Generate witness using witnesscalc adapter.
+        // Spawned on a dedicated thread with a large stack: the witnesscalc C++
+        // library reallocates its internal buffer when the circuit is large
+        // (sha256rsa4096 needs ~122 MB). On macOS, realloc() moves the
+        // allocation and the library's stale interior pointers trigger SIGSEGV
+        // on the main thread. A fresh thread with pre-committed virtual address
+        // space makes realloc() more likely to grow in-place, avoiding the move.
         info!(
             "Generating witness using witnesscalc ({})...",
             T::CIRCUIT_NAME
         );
         let t0 = Instant::now();
-        let witness_bytes = T::generate_witness_bytes(&json_string).map_err(|e| {
-            eprintln!("Witness generation failed: {}", e);
-            SynthesisError::Unsatisfiable
-        })?;
+        let witness_bytes = {
+            let json_for_thread = json_string.clone();
+            std::thread::Builder::new()
+                .stack_size(256 * 1024 * 1024) // 256 MB
+                .spawn(move || T::generate_witness_bytes(&json_for_thread))
+                .map_err(|e| {
+                    eprintln!("Failed to spawn witness thread: {e}");
+                    SynthesisError::Unsatisfiable
+                })?
+                .join()
+                .map_err(|_| {
+                    eprintln!("Witness generation thread panicked");
+                    SynthesisError::Unsatisfiable
+                })?
+                .map_err(|e| {
+                    eprintln!("Witness generation failed: {e}");
+                    SynthesisError::Unsatisfiable
+                })?
+        };
         info!("witnesscalc time: {} ms", t0.elapsed().as_millis());
 
         let witness = parse_witness(&witness_bytes)?;
@@ -889,17 +911,18 @@ impl<T: RsaKeySize> SpartanCircuit<E> for Sha256RsaCircuit<T> {
         let is_setup_phase = cs_type.contains("ShapeCS");
 
         if is_setup_phase {
-            let r1cs = load_r1cs(&r1cs_path);
-            // Pass None for witness during setup
-            synthesize(cs, r1cs.unwrap(), None)?;
+            let r1cs = load_r1cs_mmap(&r1cs_path)
+                .expect("failed to load r1cs");
+            synthesize(cs, r1cs, None)?;
             return Ok(());
         }
 
         // Generate witness for prove phase
         let witness = self.get_or_generate_witness()?;
 
-        let r1cs = load_r1cs(&r1cs_path);
-        synthesize(cs, r1cs.unwrap(), Some(witness))?;
+        let r1cs = load_r1cs_mmap(&r1cs_path)
+            .expect("failed to load r1cs");
+        synthesize(cs, r1cs, Some(witness))?;
         Ok(())
     }
 
