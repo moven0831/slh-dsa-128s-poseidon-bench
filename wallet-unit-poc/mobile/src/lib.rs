@@ -355,12 +355,19 @@ mod tests {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let documents_path = manifest.join("../ecdsa-spartan2");
         let input_src = manifest.join("../circom/inputs/sha256rsa4096/input.json");
+        let r1cs_src = manifest.join("../circom/build/sha256rsa4096/sha256rsa4096_js/sha256rsa4096.r1cs");
+        assert!(r1cs_src.exists(), "R1CS not found at {}. Run `yarn compile:sha256rsa4096` first.", r1cs_src.display());
+        let r1cs_dst = documents_path.join("sha256rsa4096.r1cs");
+        if !r1cs_dst.exists() {
+            std::fs::copy(&r1cs_src, &r1cs_dst).expect("Failed to copy R1CS");
+        }
         prove_fido(
             documents_path.to_string_lossy().to_string(),
             Some(input_src.to_string_lossy().to_string()),
         )?;
         let verify_result = verify_fido(documents_path.to_string_lossy().to_string())?;
         assert!(verify_result);
+        std::fs::remove_file(r1cs_dst).expect("Failed to remove R1CS");
         Ok(())
     }
 
