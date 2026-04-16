@@ -5,7 +5,7 @@
 use ecdsa_spartan2::{
     generate_split_inputs,
     circuits::sha256rsa_circuit::{CardSignResponse, Pkcs11InfoResponse},
-    CertChainCircuit, DEFAULT_TBS,
+    CertChainCircuit, DEFAULT_TBS, MAX_CERT_CHAIN_RS2048_LENGTH,
 };
 
 fn load_rs2048_fixtures() -> (x509_cert::Certificate, String, x509_cert::Certificate, String) {
@@ -43,6 +43,7 @@ fn split_inputs_have_expected_structure() {
         None,
         17,
         17,
+        MAX_CERT_CHAIN_RS2048_LENGTH,
     )
     .expect("generate_split_inputs failed");
 
@@ -86,8 +87,13 @@ fn split_inputs_have_expected_structure() {
     // Array dimensions
     assert_eq!(
         cert_chain["user_cert_zero_padded"].as_array().unwrap().len(),
-        1536,
+        1024,
         "user_cert_zero_padded length"
+    );
+    assert_eq!(
+        cert_chain["issuer_tbs"].as_array().unwrap().len(),
+        1024,
+        "issuer_tbs length (MAX_CERT_CHAIN_RS2048_LENGTH)"
     );
     assert_eq!(
         cert_chain["issuer_rsa_modulus"].as_array().unwrap().len(),
@@ -129,6 +135,7 @@ fn split_inputs_share_pk_blind() {
         None,
         17,
         17,
+        MAX_CERT_CHAIN_RS2048_LENGTH,
     )
     .expect("generate_split_inputs failed");
 
