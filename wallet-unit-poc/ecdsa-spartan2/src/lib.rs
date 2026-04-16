@@ -11,6 +11,7 @@ pub type Scalar = <E as Engine>::Scalar;
 /// Default TBS challenge used by test fixtures and CLI defaults.
 pub const DEFAULT_TBS: &[u8] = b"e775f2805fb993e05a208dbff15d1c1";
 
+pub mod challenge_client;
 pub mod circuits;
 pub mod hipki_client;
 pub mod paths;
@@ -20,11 +21,11 @@ pub mod setup;
 pub mod smt_client;
 pub mod utils;
 
-pub use circuits::sha256rsa_circuit::{serial_bytes_to_hex_trimmed, RsaKeySize, Sha256RsaCircuit};
+pub use circuits::cert::serial_bytes_to_hex_trimmed;
+pub use circuits::circuit::{RsaKeySize, Sha256RsaCircuit};
 pub use circuits::split_circuits::{
     generate_split_inputs, CertChainCircuit, CertChainRs4096Circuit, CertChainRsa2048,
-    CertChainRsa4096, DeviceSigCircuit, DeviceSigRsa2048, MAX_CERT_CHAIN_RS2048_LENGTH,
-    MAX_CERT_CHAIN_RS4096_LENGTH,
+    CertChainRsa4096, DeviceSigCircuit, DeviceSigRsa2048, MAX_CERT_CHAIN_LENGTH,
 };
 pub use paths::PathConfig;
 pub use prover::{
