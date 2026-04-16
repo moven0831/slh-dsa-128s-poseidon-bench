@@ -42,6 +42,7 @@ hex = "0.4.3"
 ureq = { version = "2", features = ["json"] }
 subtle = "2"
 anyhow = "1"
+mimalloc = { version = "0.1", default-features = false }
 
 [dev-dependencies]
 x509-cert = { version = "0.2", features = ["builder"] }

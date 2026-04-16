@@ -32,6 +32,9 @@
 //!   cargo run --release -- link-verify
 //!   cargo run --release -- link-verify --cert-chain-4096
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use ecdsa_spartan2::{
     generate_split_inputs, load_proof, prove_circuit, prove_circuit_with_pk, run_circuit,
     save_keys, serial_bytes_to_hex_trimmed, setup_circuit_keys, setup_circuit_keys_no_save,
