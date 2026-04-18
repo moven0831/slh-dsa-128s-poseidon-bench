@@ -267,14 +267,14 @@ pub fn prove_fido(documents_path: String, input_dir: String) -> Result<ProofResu
     }
 
     // Pre-warm witness caches on a clean heap before any large allocations.
-    let cc_circuit = CertChainRs4096Circuit::new(config.clone(), cc_path);
+    let cc_circuit = CertChainRs4096Circuit::new(config.clone(), Some(cc_path));
     cc_circuit
         .warm_witness_cache()
         .map_err(|e| ZkProofError::ProofGenerationFailed {
             msg: format!("cert_chain_rs4096 witness pre-warm failed: {}", e),
         })?;
 
-    let ds_circuit = DeviceSigCircuit::new(config.clone(), ds_path);
+    let ds_circuit = DeviceSigCircuit::new(config.clone(), Some(ds_path));
     ds_circuit
         .warm_witness_cache()
         .map_err(|e| ZkProofError::ProofGenerationFailed {
