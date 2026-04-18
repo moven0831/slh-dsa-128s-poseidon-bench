@@ -23,6 +23,7 @@ on:
 
 jobs:
     mobile-tests:
+        needs: compile-circuits
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v5
@@ -129,7 +130,7 @@ jobs:
             - name: Download circuit artifacts
               uses: actions/download-artifact@v4
               with:
-                  name: circuit-cpp-macos
+                  name: circuit-cpp
                   path: wallet-unit-poc/circom/build/cpp/
 
             - name: Verify circuit artifacts

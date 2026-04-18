@@ -248,18 +248,33 @@ pub fn setup_keys_fido(documents_path: String) -> Result<String, ZkProofError> {
 /// Witnesses are pre-warmed before any Spartan2 key I/O so that witnesscalc's
 /// C++ realloc runs on a clean heap and avoids macOS SIGSEGV from moved pointers.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn prove_fido(documents_path: String) -> Result<ProofResult, ZkProofError> {
+pub fn prove_fido(documents_path: String, input_dir: String) -> Result<ProofResult, ZkProofError> {
     let config = make_config(&documents_path);
 
+    let dir = PathBuf::from(&input_dir);
+    let cc_path = dir.join(format!("{}_input.json", CertChainRsa4096::CIRCUIT_NAME));
+    let ds_path = dir.join(format!("{}_input.json", DeviceSigRsa2048::CIRCUIT_NAME));
+
+    if !cc_path.exists() {
+        return Err(ZkProofError::FileNotFound {
+            msg: format!("cert_chain_rs4096 input file not found: {}", cc_path.display()),
+        });
+    }
+    if !ds_path.exists() {
+        return Err(ZkProofError::FileNotFound {
+            msg: format!("device_sig_rs2048 input file not found: {}", ds_path.display()),
+        });
+    }
+
     // Pre-warm witness caches on a clean heap before any large allocations.
-    let cc_circuit = CertChainRs4096Circuit::new(config.clone(), None);
+    let cc_circuit = CertChainRs4096Circuit::new(config.clone(), cc_path);
     cc_circuit
         .warm_witness_cache()
         .map_err(|e| ZkProofError::ProofGenerationFailed {
             msg: format!("cert_chain_rs4096 witness pre-warm failed: {}", e),
         })?;
 
-    let ds_circuit = DeviceSigCircuit::new(config.clone(), None);
+    let ds_circuit = DeviceSigCircuit::new(config.clone(), ds_path);
     ds_circuit
         .warm_witness_cache()
         .map_err(|e| ZkProofError::ProofGenerationFailed {
