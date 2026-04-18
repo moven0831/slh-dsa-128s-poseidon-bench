@@ -1,0 +1,180 @@
+name: rust-tests
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - "wallet-unit-poc/ecdsa-spartan2/**"
+            - "wallet-unit-poc/circom/circuits/**"
+            - ".github/workflows/rust-tests.yaml"
+            - ".github/workflows/compile-circuits.yaml"
+    pull_request:
+        paths:
+            - "wallet-unit-poc/ecdsa-spartan2/**"
+            - "wallet-unit-poc/circom/circuits/**"
+            - ".github/workflows/rust-tests.yaml"
+            - ".github/workflows/compile-circuits.yaml"
+    workflow_dispatch:
+
+jobs:
+    compile-circuits:
+        uses: ./.github/workflows/compile-circuits.yaml
+
+    rust-tests:
+        needs: compile-circuits
+        runs-on: ubuntu-latest
+
+        permissions:
+            contents: write
+
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Download circuit C++ artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-cpp
+                  path: wallet-unit-poc/circom/build/cpp/
+
+            - name: Download R1CS artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-r1cs
+                  path: wallet-unit-poc/circom/build/
+
+            - name: Download circuit WASM artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-wasm
+                  path: wallet-unit-poc/circom/build/
+
+            - name: Install system dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install --yes \
+                    build-essential \
+                    libgmp-dev \
+                    libsodium-dev \
+                    nasm \
+                    nlohmann-json3-dev
+
+            - name: Set up Rust
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache Cargo registry and git
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                  key: rust-tests-cargo-${{ hashFiles('wallet-unit-poc/ecdsa-spartan2/Cargo.lock') }}
+                  restore-keys: |
+                      rust-tests-cargo-
+
+            # === cert-chain RSA-2048 issuer + device-sig RSA-2048 user ===
+
+            - name: Generate split inputs (RS2048)
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  RUST_LOG=info cargo run --release -- generate-split-input
+
+            - name: Run e2e flow — cert-chain (RS2048)
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  cargo run --release --features cert_chain_rs2048 -- cert-chain setup --input ../circom/inputs/cert_chain_rs2048/input.json
+                  cargo run --release --features cert_chain_rs2048 -- cert-chain prove --input ../circom/inputs/cert_chain_rs2048/input.json
+                  cargo run --release --features cert_chain_rs2048 -- cert-chain verify
+
+            - name: Run e2e flow — device-sig (RS2048)
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  cargo run --release --features device_sig_rs2048 -- device-sig setup --input ../circom/inputs/device_sig_rs2048/input.json
+                  cargo run --release --features device_sig_rs2048 -- device-sig prove --input ../circom/inputs/device_sig_rs2048/input.json
+                  cargo run --release --features device_sig_rs2048 -- device-sig verify
+
+            - name: Link-verify (RS2048)
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  RUST_LOG=info cargo run --release -- link-verify
+
+            # === cert-chain 4096-bit issuer + device-sig 2048-bit user ===
+
+            - name: Generate split inputs (RS4096)
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  RUST_LOG=info cargo run --release -- generate-split-input --cert-chain-4096
+
+            - name: Run e2e flow — cert-chain (RS4096)
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  cargo run --release --features cert_chain_rs4096 -- cert-chain setup --cert-chain-4096 --input ../circom/inputs/cert_chain_rs4096/input.json
+                  cargo run --release --features cert_chain_rs4096 -- cert-chain prove --cert-chain-4096 --input ../circom/inputs/cert_chain_rs4096/input.json
+                  cargo run --release --features cert_chain_rs4096 -- cert-chain verify --cert-chain-4096
+
+            - name: Run e2e flow — device-sig (RS4096 chain)
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  cargo run --release --features device_sig_rs2048 -- device-sig setup --input ../circom/inputs/device_sig_rs4096chain/input.json
+                  cargo run --release --features device_sig_rs2048 -- device-sig prove --input ../circom/inputs/device_sig_rs4096chain/input.json
+                  cargo run --release --features device_sig_rs2048 -- device-sig verify
+
+            - name: Link-verify (RS4096)
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  RUST_LOG=info cargo run --release -- link-verify --cert-chain-4096
+
+            # === Unit tests ===
+
+            - name: Run ecdsa-spartan2 unit tests
+              run: |
+                  cd wallet-unit-poc/ecdsa-spartan2
+                  cargo test --release
+
+            # === Release artifacts ===
+
+            - name: Gzip release artifacts
+              run: |
+                  set -euo pipefail
+                  cd wallet-unit-poc/ecdsa-spartan2/keys
+                  for f in cert_chain_rs2048_proving.key cert_chain_rs2048_verifying.key \
+                           cert_chain_rs4096_proving.key cert_chain_rs4096_verifying.key \
+                           device_sig_rs2048_proving.key device_sig_rs2048_verifying.key; do
+                    gzip -k "$f"
+                  done
+                  cd "$GITHUB_WORKSPACE/wallet-unit-poc/circom/build"
+                  for circuit in cert_chain_rs2048 cert_chain_rs4096 device_sig_rs2048; do
+                    gzip -k "${circuit}/${circuit}_js/${circuit}.r1cs"
+                    gzip -k "${circuit}/${circuit}_js/${circuit}.wasm"
+                  done
+                  cd cpp
+                  for f in *.cpp *.dat; do
+                    gzip -k "$f"
+                  done
+
+            - name: Upload artifacts to GitHub Release
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: latest
+                  files: |
+                      wallet-unit-poc/ecdsa-spartan2/keys/cert_chain_rs2048_proving.key.gz
+                      wallet-unit-poc/ecdsa-spartan2/keys/cert_chain_rs2048_verifying.key.gz
+                      wallet-unit-poc/ecdsa-spartan2/keys/cert_chain_rs4096_proving.key.gz
+                      wallet-unit-poc/ecdsa-spartan2/keys/cert_chain_rs4096_verifying.key.gz
+                      wallet-unit-poc/ecdsa-spartan2/keys/device_sig_rs2048_proving.key.gz
+                      wallet-unit-poc/ecdsa-spartan2/keys/device_sig_rs2048_verifying.key.gz
+                      wallet-unit-poc/circom/build/cert_chain_rs2048/cert_chain_rs2048_js/cert_chain_rs2048.r1cs.gz
+                      wallet-unit-poc/circom/build/cert_chain_rs4096/cert_chain_rs4096_js/cert_chain_rs4096.r1cs.gz
+                      wallet-unit-poc/circom/build/device_sig_rs2048/device_sig_rs2048_js/device_sig_rs2048.r1cs.gz
+                      wallet-unit-poc/circom/build/cpp/cert_chain_rs2048.cpp.gz
+                      wallet-unit-poc/circom/build/cpp/cert_chain_rs2048.dat.gz
+                      wallet-unit-poc/circom/build/cpp/cert_chain_rs4096.cpp.gz
+                      wallet-unit-poc/circom/build/cpp/cert_chain_rs4096.dat.gz
+                      wallet-unit-poc/circom/build/cpp/device_sig_rs2048.cpp.gz
+                      wallet-unit-poc/circom/build/cpp/device_sig_rs2048.dat.gz
+                      wallet-unit-poc/circom/build/cert_chain_rs2048/cert_chain_rs2048_js/cert_chain_rs2048.wasm.gz
+                      wallet-unit-poc/circom/build/cert_chain_rs4096/cert_chain_rs4096_js/cert_chain_rs4096.wasm.gz
+                      wallet-unit-poc/circom/build/device_sig_rs2048/device_sig_rs2048_js/device_sig_rs2048.wasm.gz
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

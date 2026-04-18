@@ -1,9 +1,9 @@
 use std::{
     fs::{create_dir_all, File},
-    io::{BufReader, Cursor, Write},
+    io::{BufReader, BufWriter, Cursor},
     path::Path,
-    time::Instant,
 };
+use web_time::Instant;
 
 use spartan2::{
     r1cs::{R1CSWitness, SplitR1CSInstance},
@@ -15,8 +15,12 @@ use tracing::info;
 use crate::E;
 use memmap2::MmapOptions;
 
-// Re-export key constants from paths module for convenience
-pub use crate::paths::keys::*;
+fn ensure_parent_dir(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        create_dir_all(parent)?;
+    }
+    Ok(())
+}
 
 pub fn save_keys(
     pk_path: impl AsRef<Path>,
@@ -27,22 +31,13 @@ pub fn save_keys(
     let pk_path = pk_path.as_ref();
     let vk_path = vk_path.as_ref();
 
-    if let Some(parent) = pk_path.parent() {
-        create_dir_all(parent)?;
-    }
-    if let Some(parent) = vk_path.parent() {
-        create_dir_all(parent)?;
-    }
+    ensure_parent_dir(pk_path)?;
+    ensure_parent_dir(vk_path)?;
 
-    let pk_bytes = bincode::serialize(pk)?;
-    let mut pk_file = File::create(pk_path)?;
-    pk_file.write_all(&pk_bytes)?;
-
+    bincode::serialize_into(BufWriter::new(File::create(pk_path)?), pk)?;
     info!("Saved ZK-Spartan proving key to: {}", pk_path.display());
 
-    let vk_bytes = bincode::serialize(vk)?;
-    let mut vk_file = File::create(vk_path)?;
-    vk_file.write_all(&vk_bytes)?;
+    bincode::serialize_into(BufWriter::new(File::create(vk_path)?), vk)?;
     info!("Saved ZK-Spartan verifying key to: {}", vk_path.display());
 
     Ok(())
@@ -104,13 +99,9 @@ pub fn save_shared_blinds<E: Engine>(
     shared_blinds: &[E::Scalar],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let shared_blinds_path = shared_blinds_path.as_ref();
-    if let Some(parent) = shared_blinds_path.parent() {
-        create_dir_all(parent)?;
-    }
+    ensure_parent_dir(shared_blinds_path)?;
 
-    let shared_blinds_bytes = bincode::serialize(shared_blinds)?;
-    let mut shared_blinds_file = File::create(shared_blinds_path)?;
-    shared_blinds_file.write_all(&shared_blinds_bytes)?;
+    bincode::serialize_into(BufWriter::new(File::create(shared_blinds_path)?), shared_blinds)?;
     info!(
         "Saved ZK-Spartan shared_blinds to: {}",
         shared_blinds_path.display()
@@ -124,13 +115,9 @@ pub fn save_proof(
     proof: &R1CSSNARK<E>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let proof_path = proof_path.as_ref();
-    if let Some(parent) = proof_path.parent() {
-        create_dir_all(parent)?;
-    }
+    ensure_parent_dir(proof_path)?;
 
-    let proof_bytes = bincode::serialize(proof)?;
-    let mut proof_file = File::create(proof_path)?;
-    proof_file.write_all(&proof_bytes)?;
+    bincode::serialize_into(BufWriter::new(File::create(proof_path)?), proof)?;
     info!("Saved ZK-Spartan proof to: {}", proof_path.display());
 
     Ok(())
@@ -141,13 +128,9 @@ pub fn save_instance(
     instance: &SplitR1CSInstance<E>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let instance_path = instance_path.as_ref();
-    if let Some(parent) = instance_path.parent() {
-        create_dir_all(parent)?;
-    }
+    ensure_parent_dir(instance_path)?;
 
-    let instance_bytes = bincode::serialize(instance)?;
-    let mut instance_file = File::create(instance_path)?;
-    instance_file.write_all(&instance_bytes)?;
+    bincode::serialize_into(BufWriter::new(File::create(instance_path)?), instance)?;
     info!("Saved ZK-Spartan instance to: {}", instance_path.display());
 
     Ok(())
@@ -158,13 +141,9 @@ pub fn save_witness(
     witness: &R1CSWitness<E>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let witness_path = witness_path.as_ref();
-    if let Some(parent) = witness_path.parent() {
-        create_dir_all(parent)?;
-    }
+    ensure_parent_dir(witness_path)?;
 
-    let witness_bytes = bincode::serialize(witness)?;
-    let mut witness_file = File::create(witness_path)?;
-    witness_file.write_all(&witness_bytes)?;
+    bincode::serialize_into(BufWriter::new(File::create(witness_path)?), witness)?;
     info!("Saved ZK-Spartan witness to: {}", witness_path.display());
 
     Ok(())

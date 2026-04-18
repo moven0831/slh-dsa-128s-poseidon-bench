@@ -1,6 +1,6 @@
 {
   "name": "@privacy-scaling-explorations/zkid-circom",
-  "description": "circom circuits for verifying JWTs signed with RS256",
+  "description": "circom circuits for verifying X.509 RSA-SHA256 certificate chains with revocation",
   "version": "0.0.1",
   "license": "MIT",
   "repository": {
@@ -8,15 +8,15 @@
     "url": "https://github.com/privacy-scaling-explorations/zkID"
   },
   "scripts": {
-    "test": "NODE_OPTIONS=--max-old-space-size=16384 npx mocha --spec",
-    "save_input_file": "npx tsx src/save_inputs.ts",
-    "compile:jwt_rs256": "bash scripts/compile.sh jwt_rs256",
-    "compile:sha256rsa2048": "bash scripts/compile.sh sha256rsa2048",
-    "compile:sha256rsa4096": "bash scripts/compile.sh sha256rsa4096",
-    "compile:all": "bash scripts/compile.sh all",
-    "setup": "npx circomkit setup jwt_rs256",
-    "prove": "npx circomkit prove jwt_rs256",
-    "verify": "npx circomkit verify jwt_rs256"
+    "test": "NODE_OPTIONS=--max-old-space-size=16384 npx mocha",
+    "test:device_sig": "NODE_OPTIONS=--max-old-space-size=16384 npx mocha tests/circuits/device_sig_rs2048.test.ts",
+    "test:cert_chain_2048": "NODE_OPTIONS=--max-old-space-size=16384 npx mocha tests/circuits/cert_chain_rs2048.test.ts",
+    "test:cert_chain_4096": "NODE_OPTIONS=--max-old-space-size=16384 npx mocha tests/circuits/cert_chain_rs4096.test.ts",
+    "test:linking": "NODE_OPTIONS=--max-old-space-size=16384 npx mocha tests/circuits/pk_commit_linking.test.ts",
+    "compile:cert_chain_rs2048": "bash scripts/compile.sh cert_chain_rs2048",
+    "compile:cert_chain_rs4096": "bash scripts/compile.sh cert_chain_rs4096",
+    "compile:device_sig_rs2048": "bash scripts/compile.sh device_sig_rs2048",
+    "compile:all": "bash scripts/compile.sh all"
   },
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",

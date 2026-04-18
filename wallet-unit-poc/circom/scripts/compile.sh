@@ -1,11 +1,11 @@
 #!/bin/bash
 
 usage() {
-    echo "Usage: $0 {jwt_rs256|sha256rsa2048|sha256rsa4096|all}"
-    echo "  jwt_rs256: Compile files for JWT-RS256."
-    echo "  sha256rsa2048: Compile files for SHA256RSA2048."
-    echo "  sha256rsa4096: Compile files for SHA256RSA4096."
-    echo "  all: Compile all circuits."
+    echo "Usage: $0 {cert_chain_rs2048|cert_chain_rs4096|device_sig_rs2048|all}"
+    echo "  cert_chain_rs2048: Phase 2 split — Circuit A (cert chain + revocation) for MOICA-G2."
+    echo "  cert_chain_rs4096: Phase 2 split — Circuit A for MOICA-G3 (4096-bit issuer, 2048-bit user)."
+    echo "  device_sig_rs2048: Phase 2 split — Circuit B (device signature); always RSA-2048 (user keys are always 2048-bit)."
+    echo "  all:               Compile all circuits."
     exit 1
 }
 
@@ -28,19 +28,19 @@ function compile() {
 
 
 case "$1" in
-    jwt_rs256)
-       compile jwt_rs256
+    cert_chain_rs2048)
+        compile cert_chain_rs2048
     ;;
-    sha256rsa2048)
-        compile sha256rsa2048
+    cert_chain_rs4096)
+        compile cert_chain_rs4096
     ;;
-    sha256rsa4096)
-        compile sha256rsa4096
+    device_sig_rs2048)
+        compile device_sig_rs2048
     ;;
     all)
-        compile jwt_rs256
-        compile sha256rsa2048
-        compile sha256rsa4096
+        compile cert_chain_rs2048
+        compile cert_chain_rs4096
+        compile device_sig_rs2048
     ;;
     *)
         echo "Error: Invalid option '$1'."

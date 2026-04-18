@@ -1,0 +1,44 @@
+name: circom-tests
+
+on:
+    push:
+        branches:
+            - main
+        paths:
+            - "wallet-unit-poc/circom/**"
+            - ".github/workflows/circom-tests.yaml"
+    pull_request:
+        paths:
+            - "wallet-unit-poc/circom/**"
+            - ".github/workflows/circom-tests.yaml"
+    workflow_dispatch:
+
+env:
+    CIRCOM_VERSION: v2.2.3
+
+jobs:
+    circuit-tests:
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "yarn"
+                  cache-dependency-path: wallet-unit-poc/circom/yarn.lock
+
+            - name: Install system dependencies
+              run: brew install nasm
+
+            - name: Download Circom Binary ${{ env.CIRCOM_VERSION }}
+              run: |
+                  sudo wget -O ~/.cargo/bin/circom https://github.com/iden3/circom/releases/download/${{ env.CIRCOM_VERSION }}/circom-macos-amd64
+                  sudo chmod +x ~/.cargo/bin/circom
+
+            - name: Install JS dependencies
+              run: cd wallet-unit-poc/circom && yarn
+
+            - name: Run circuit tests
+              run: cd wallet-unit-poc/circom && yarn test
