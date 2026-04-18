@@ -12,12 +12,14 @@ default = ["uniffi"]
 uniffi = ["mopro-ffi/uniffi"]
 flutter = ["mopro-ffi/flutter"]
 wasm = []
+mobile = ["ecdsa-spartan2/cert_chain_rs4096", "ecdsa-spartan2/device_sig_rs2048"]
 
 [dependencies]
 mopro-ffi = "0.3.5"
 thiserror = "2.0.12"
 anyhow = "1.0.99"
-ecdsa-spartan2 = { path = "../ecdsa-spartan2", features = ["sha256rsa4096"] } # mobile only supports 4096-bit RSA
+ecdsa-spartan2 = { path = "../ecdsa-spartan2" } # mobile only supports 4096-bit RSA
+mimalloc = { version = "0.1", default-features = false, features = ["override"] } # override: replaces system malloc/realloc (DYLD_INTERPOSE on macOS) so witnesscalc C++ realloc uses mimalloc's in-place grow strategy
 
 # SPARTAN2_DEPENDENCIES
 spartan2 = { git = "https://github.com/0xVikasRushi/Spartan2.git", branch = "openac-sdk", default-features = false }

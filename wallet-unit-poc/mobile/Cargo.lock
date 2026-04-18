@@ -933,15 +933,18 @@ dependencies = [
  "ff",
  "hex",
  "memmap2 0.9.8",
+ "mimalloc",
  "num-bigint 0.4.6",
  "rsa",
  "serde",
  "serde_json",
  "sha2",
  "spartan2",
+ "subtle",
  "tracing",
  "tracing-subscriber",
  "ureq",
+ "web-time",
  "witnesscalc-adapter",
  "x509-cert",
 ]
@@ -1717,6 +1720,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
 
 [[package]]
+name = "libmimalloc-sys"
+version = "0.1.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "667f4fec20f29dfc6bc7357c582d91796c169ad7e2fce709468aefeb2c099870"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1803,6 +1816,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "mimalloc"
+version = "0.1.48"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1ee66a4b64c74f4ef288bcbb9192ad9c3feaad75193129ac8509af543894fd8"
+dependencies = [
+ "libmimalloc-sys",
 ]
 
 [[package]]
@@ -1998,6 +2020,7 @@ dependencies = [
  "group",
  "halo2curves",
  "itertools 0.14.0",
+ "mimalloc",
  "mopro-ffi",
  "num-bigint 0.4.6",
  "num-integer",
@@ -2950,7 +2973,7 @@ checksum = "b7c388c1b5e93756d0c740965c41e8822f866621d41acbdf6336a6a168f8840c"
 [[package]]
 name = "spartan2"
 version = "0.4.0"
-source = "git+https://github.com/therealyingtong/Spartan2.git?branch=zk#01020f09dcddd6b46bdb5a16725b75d8695d0e61"
+source = "git+https://github.com/0xVikasRushi/Spartan2.git?branch=openac-sdk#d687dbb639eccbdd21e62fecec97c5826bc4dbbf"
 dependencies = [
  "bellpepper",
  "bellpepper-core",
@@ -2977,6 +3000,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tracing",
  "tracing-subscriber",
+ "web-time",
 ]
 
 [[package]]
@@ -3880,6 +3904,16 @@ name = "web-sys"
 version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33b6dd2ef9186f1f2072e409e99cd22a975331a6b3591b12c764e0e55c60d5d2"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "web-time"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
