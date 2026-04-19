@@ -37,6 +37,12 @@ jobs:
             - name: Verify circuit artifacts
               run: ls -la wallet-unit-poc/circom/build/cpp/
 
+            - name: Download R1CS artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-r1cs
+                  path: wallet-unit-poc/circom/build/
+
             - name: Install system dependencies
               run: |
                   sudo apt-get update
@@ -67,7 +73,7 @@ jobs:
 
     compile-circuits:
         uses: ./.github/workflows/compile-circuits.yaml
-    
+
     build-ios:
         needs: compile-circuits
         runs-on: macos-latest
