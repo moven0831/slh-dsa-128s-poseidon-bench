@@ -10,54 +10,94 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 Future<void> initApp() => RustLib.instance.api.openacMobileAppInitApp();
 
-/// Generate circuit input from a FIDO FidoSignResponse (sha256rsa4096)
-Future<String> generateInputFido({
+/// Generate split circuit inputs for both cert_chain_rs4096 and device_sig_rs2048.
+///
+/// Writes two JSON files into `output_dir`:
+///   - `cert_chain_rs4096_input.json`
+///   - `device_sig_rs2048_input.json`
+///
+/// These are the input files expected by `prove` via `PathConfig::mobile`.
+Future<String> generateCertChainRs4096Input({
   required String certb64,
   required String signedResponse,
   required String tbs,
   required String issuerCertPath,
   String? smtServer,
   required String issuerId,
-  required String outputPath,
-}) => RustLib.instance.api.openacMobileAppGenerateInputFido(
+  required String outputDir,
+}) => RustLib.instance.api.openacMobileAppGenerateCertChainRs4096Input(
   certb64: certb64,
   signedResponse: signedResponse,
   tbs: tbs,
   issuerCertPath: issuerCertPath,
   smtServer: smtServer,
   issuerId: issuerId,
-  outputPath: outputPath,
+  outputDir: outputDir,
 );
 
-/// Setup sha256rsa4096 circuit keys (FIDO)
-Future<String> setupKeysFido({
-  required String documentsPath,
-  String? inputPath,
-}) => RustLib.instance.api.openacMobileAppSetupKeysFido(
-  documentsPath: documentsPath,
-  inputPath: inputPath,
-);
+/// Setup circuit keys for both cert_chain_rs4096 and device_sig_rs2048.
+///
+/// Requires that `{documents_path}/cert_chain_rs4096.r1cs` and
+/// `{documents_path}/device_sig_rs2048.r1cs` are present.
+Future<String> setupKeys({required String documentsPath}) =>
+    RustLib.instance.api.openacMobileAppSetupKeys(documentsPath: documentsPath);
 
-/// Generate sha256rsa4096 circuit proof (FIDO)
-Future<ProofResult> proveFido({
-  required String documentsPath,
-  String? inputPath,
-}) => RustLib.instance.api.openacMobileAppProveFido(
-  documentsPath: documentsPath,
-  inputPath: inputPath,
-);
+/// Generate proofs for cert_chain_rs4096 circuit.
+///
+/// Reads input JSONs via `PathConfig::mobile(documents_path)`:
+///   - `{documents_path}/cert_chain_rs4096_input.json`
+///
+/// Writes proofs, instances, and witnesses under `{documents_path}/keys/`.
+///
+/// Witnesses are pre-warmed before any Spartan2 key I/O so that witnesscalc's
+/// C++ realloc runs on a clean heap and avoids macOS SIGSEGV from moved pointers.
+Future<ProofResult> proveCertChainRs4096({required String documentsPath}) =>
+    RustLib.instance.api.openacMobileAppProveCertChainRs4096(
+      documentsPath: documentsPath,
+    );
 
-/// Verify sha256rsa4096 circuit proof (FIDO)
-Future<bool> verifyFido({required String documentsPath}) => RustLib.instance.api
-    .openacMobileAppVerifyFido(documentsPath: documentsPath);
+/// Generate proofs for both cert_chain_rs4096 and device_sig_rs2048 circuits.
+///
+/// Reads input JSONs via `PathConfig::mobile(documents_path)`:
+///   - `{documents_path}/cert_chain_rs4096_input.json`
+///   - `{documents_path}/device_sig_rs2048_input.json`
+///
+/// Writes proofs, instances, and witnesses under `{documents_path}/keys/`.
+///
+/// Witnesses are pre-warmed before any Spartan2 key I/O so that witnesscalc's
+/// C++ realloc runs on a clean heap and avoids macOS SIGSEGV from moved pointers.
+Future<ProofResult> proveDeviceSigRs2048({required String documentsPath}) =>
+    RustLib.instance.api.openacMobileAppProveDeviceSigRs2048(
+      documentsPath: documentsPath,
+    );
 
-/// Run complete benchmark pipeline for sha256rsa4096 circuit (FIDO)
-Future<BenchmarkResults> runCompleteBenchmarkFido({
+/// Verify proofs for cert_chain_rs4096 circuit.
+Future<bool> verifyCertChainRs4096({required String documentsPath}) => RustLib
+    .instance
+    .api
+    .openacMobileAppVerifyCertChainRs4096(documentsPath: documentsPath);
+
+/// Verify proofs for device_sig_rs2048 circuit.
+Future<bool> verifyDeviceSigRs2048({required String documentsPath}) => RustLib
+    .instance
+    .api
+    .openacMobileAppVerifyDeviceSigRs2048(documentsPath: documentsPath);
+
+/// Verify proofs for cert_chain_rs4096 and device_sig_rs2048 circuits.
+Future<bool> linkVerify({required String documentsPath}) => RustLib.instance.api
+    .openacMobileAppLinkVerify(documentsPath: documentsPath);
+
+/// Run complete benchmark pipeline for both cert_chain_rs4096 and device_sig_rs2048 circuits.
+///
+/// Witnesses are pre-warmed on a clean heap before Spartan2 setup to prevent macOS SIGSEGV:
+/// witnesscalc's C++ `realloc()` moves large allocations on a fragmented heap, leaving stale
+/// interior pointers. Pre-warming ensures the realloc happens before heap fragmentation.
+/// Each circuit is then processed in isolation (setup → save → drop PK → prove → verify) to
+/// avoid holding two large proving keys in memory simultaneously. Timings and sizes are combined.
+Future<BenchmarkResults> runCompleteBenchmark({
   required String documentsPath,
-  String? inputPath,
-}) => RustLib.instance.api.openacMobileAppRunCompleteBenchmarkFido(
+}) => RustLib.instance.api.openacMobileAppRunCompleteBenchmark(
   documentsPath: documentsPath,
-  inputPath: inputPath,
 );
 
 /// Test function for basic UniFFI integration
@@ -117,7 +157,8 @@ class BenchmarkResults {
           witnessBytes == other.witnessBytes;
 }
 
-/// Result of a proving operation with timing and proof metadata
+/// Result of a proving operation with timing and proof metadata.
+/// `prove_ms` is the total time for both circuits; `proof_size_bytes` is the combined size.
 class ProofResult {
   final BigInt proveMs;
   final BigInt proofSizeBytes;

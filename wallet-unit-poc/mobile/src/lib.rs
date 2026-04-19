@@ -5,11 +5,10 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 use ecdsa_spartan2::{
-    generate_split_inputs, load_proof, serial_bytes_to_hex_trimmed, CertChainRs4096Circuit,
-    DeviceSigCircuit, CertChainRsa4096, DeviceSigRsa2048, MAX_CERT_CHAIN_LENGTH,
-    prove_circuit, prove_circuit_with_pk, verify_circuit, verify_circuit_with_loaded_data,
-    save_keys, setup_circuit_keys, setup_circuit_keys_no_save,
-    PathConfig, RsaKeySize,
+    generate_split_inputs, load_proof, prove_circuit, prove_circuit_with_pk, save_keys,
+    serial_bytes_to_hex_trimmed, setup_circuit_keys, setup_circuit_keys_no_save, verify_circuit,
+    verify_circuit_with_loaded_data, CertChainRs4096Circuit, CertChainRsa4096, DeviceSigCircuit,
+    DeviceSigRsa2048, PathConfig, RsaKeySize, MAX_CERT_CHAIN_LENGTH,
 };
 use std::path::PathBuf;
 
@@ -88,17 +87,13 @@ impl std::error::Error for ZkProofError {}
 
 impl From<std::io::Error> for ZkProofError {
     fn from(e: std::io::Error) -> Self {
-        ZkProofError::IoError {
-            msg: e.to_string(),
-        }
+        ZkProofError::IoError { msg: e.to_string() }
     }
 }
 
 impl From<serde_json::Error> for ZkProofError {
     fn from(e: serde_json::Error) -> Self {
-        ZkProofError::InvalidInput {
-            msg: e.to_string(),
-        }
+        ZkProofError::InvalidInput { msg: e.to_string() }
     }
 }
 
@@ -128,9 +123,9 @@ fn get_file_size(path: impl AsRef<std::path::Path>) -> Result<u64, ZkProofError>
 ///   - `cert_chain_rs4096_input.json`
 ///   - `device_sig_rs2048_input.json`
 ///
-/// These are the input files expected by `prove_fido` via `PathConfig::mobile`.
+/// These are the input files expected by `prove` via `PathConfig::mobile`.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn generate_input_fido(
+pub fn generate_cert_chain_rs4096_input(
     certb64: String,
     signed_response: String,
     tbs: String,
@@ -139,19 +134,11 @@ pub fn generate_input_fido(
     issuer_id: String,
     output_dir: String,
 ) -> Result<String, ZkProofError> {
-    let user_cert =
-        CertChainRs4096Circuit::generate_user_cert_from_certb64(&certb64).map_err(|e| {
-            ZkProofError::InvalidInput {
-                msg: e.to_string(),
-            }
-        })?;
+    let user_cert = CertChainRs4096Circuit::generate_user_cert_from_certb64(&certb64)
+        .map_err(|e| ZkProofError::InvalidInput { msg: e.to_string() })?;
 
-    let issuer_cert =
-        CertChainRs4096Circuit::fetch_cert_from_file(&issuer_cert_path).map_err(|e| {
-            ZkProofError::InvalidInput {
-                msg: e.to_string(),
-            }
-        })?;
+    let issuer_cert = CertChainRs4096Circuit::fetch_cert_from_file(&issuer_cert_path)
+        .map_err(|e| ZkProofError::InvalidInput { msg: e.to_string() })?;
 
     let serial_hex =
         serial_bytes_to_hex_trimmed(user_cert.tbs_certificate.serial_number.as_bytes());
@@ -159,10 +146,11 @@ pub fn generate_input_fido(
     let smt_inputs = smt_server
         .as_deref()
         .map(|url| {
-            ecdsa_spartan2::smt_client::fetch_smt_proof(url, &issuer_id, &serial_hex, 128)
-                .map_err(|e| ZkProofError::InvalidInput {
+            ecdsa_spartan2::smt_client::fetch_smt_proof(url, &issuer_id, &serial_hex, 128).map_err(
+                |e| ZkProofError::InvalidInput {
                     msg: format!("SMT fetch failed: {}", e),
-                })
+                },
+            )
         })
         .transpose()?;
 
@@ -173,13 +161,11 @@ pub fn generate_input_fido(
         tbs.as_bytes(),
         &serial_hex,
         smt_inputs.as_ref(),
-        CertChainRsa4096::RSA_K,  // k_issuer = 34 (RSA-4096 CA)
-        DeviceSigRsa2048::RSA_K,  // k_user   = 17 (RSA-2048 device key)
+        CertChainRsa4096::RSA_K, // k_issuer = 34 (RSA-4096 CA)
+        DeviceSigRsa2048::RSA_K, // k_user   = 17 (RSA-2048 device key)
         MAX_CERT_CHAIN_LENGTH,
     )
-    .map_err(|e| ZkProofError::InvalidInput {
-        msg: e.to_string(),
-    })?;
+    .map_err(|e| ZkProofError::InvalidInput { msg: e.to_string() })?;
 
     let out = PathBuf::from(&output_dir);
     std::fs::create_dir_all(&out)?;
@@ -208,7 +194,7 @@ pub fn generate_input_fido(
 /// Requires that `{documents_path}/cert_chain_rs4096.r1cs` and
 /// `{documents_path}/device_sig_rs2048.r1cs` are present.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn setup_keys_fido(documents_path: String) -> Result<String, ZkProofError> {
+pub fn setup_keys(documents_path: String) -> Result<String, ZkProofError> {
     let config = make_config(&documents_path);
 
     let cc_circuit = CertChainRs4096Circuit::new(config.clone(), None);
@@ -237,48 +223,36 @@ pub fn setup_keys_fido(documents_path: String) -> Result<String, ZkProofError> {
 // Prove Operation
 // ============================================================================
 
-/// Generate proofs for both cert_chain_rs4096 and device_sig_rs2048 circuits.
+/// Generate proofs for cert_chain_rs4096 circuit.
 ///
 /// Reads input JSONs via `PathConfig::mobile(documents_path)`:
 ///   - `{documents_path}/cert_chain_rs4096_input.json`
-///   - `{documents_path}/device_sig_rs2048_input.json`
 ///
 /// Writes proofs, instances, and witnesses under `{documents_path}/keys/`.
 ///
 /// Witnesses are pre-warmed before any Spartan2 key I/O so that witnesscalc's
 /// C++ realloc runs on a clean heap and avoids macOS SIGSEGV from moved pointers.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn prove_fido(documents_path: String, input_dir: String) -> Result<ProofResult, ZkProofError> {
+pub fn prove_cert_chain_rs4096(documents_path: String) -> Result<ProofResult, ZkProofError> {
     let config = make_config(&documents_path);
 
-    let dir = PathBuf::from(&input_dir);
-    let cc_path = dir.join(format!("{}_input.json", CertChainRsa4096::CIRCUIT_NAME));
-    let ds_path = dir.join(format!("{}_input.json", DeviceSigRsa2048::CIRCUIT_NAME));
+    let input_dir = PathBuf::from(documents_path).join(format!("{}_input.json", CertChainRsa4096::CIRCUIT_NAME));
 
-    if !cc_path.exists() {
+    if !input_dir.exists() {
         return Err(ZkProofError::FileNotFound {
-            msg: format!("cert_chain_rs4096 input file not found: {}", cc_path.display()),
-        });
-    }
-    if !ds_path.exists() {
-        return Err(ZkProofError::FileNotFound {
-            msg: format!("device_sig_rs2048 input file not found: {}", ds_path.display()),
+            msg: format!(
+                "cert_chain_rs4096 input file not found: {}",
+                input_dir.display()
+            ),
         });
     }
 
     // Pre-warm witness caches on a clean heap before any large allocations.
-    let cc_circuit = CertChainRs4096Circuit::new(config.clone(), Some(cc_path));
+    let cc_circuit = CertChainRs4096Circuit::new(config.clone(), Some(input_dir));
     cc_circuit
         .warm_witness_cache()
         .map_err(|e| ZkProofError::ProofGenerationFailed {
             msg: format!("cert_chain_rs4096 witness pre-warm failed: {}", e),
-        })?;
-
-    let ds_circuit = DeviceSigCircuit::new(config.clone(), Some(ds_path));
-    ds_circuit
-        .warm_witness_cache()
-        .map_err(|e| ZkProofError::ProofGenerationFailed {
-            msg: format!("device_sig_rs2048 witness pre-warm failed: {}", e),
         })?;
 
     // --- cert_chain_rs4096: load PK (mmap), prove with cached witness ---
@@ -292,6 +266,48 @@ pub fn prove_fido(documents_path: String, input_dir: String) -> Result<ProofResu
     );
     let cc_prove_ms = cc_start.elapsed().as_millis() as u64;
 
+    let cc_proof_bytes = get_file_size(config.artifact_path(CertChainRsa4096::PROOF))?;
+
+    Ok(ProofResult {
+        prove_ms: cc_prove_ms,
+        proof_size_bytes: cc_proof_bytes,
+    })
+}
+
+/// Generate proofs for both cert_chain_rs4096 and device_sig_rs2048 circuits.
+///
+/// Reads input JSONs via `PathConfig::mobile(documents_path)`:
+///   - `{documents_path}/cert_chain_rs4096_input.json`
+///   - `{documents_path}/device_sig_rs2048_input.json`
+///
+/// Writes proofs, instances, and witnesses under `{documents_path}/keys/`.
+///
+/// Witnesses are pre-warmed before any Spartan2 key I/O so that witnesscalc's
+/// C++ realloc runs on a clean heap and avoids macOS SIGSEGV from moved pointers.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn prove_device_sig_rs2048(
+    documents_path: String,
+) -> Result<ProofResult, ZkProofError> {
+    let config = make_config(&documents_path);
+
+    let input_dir = PathBuf::from(documents_path).join(format!("{}_input.json", DeviceSigRsa2048::CIRCUIT_NAME));
+
+    if !input_dir.exists() {
+        return Err(ZkProofError::FileNotFound {
+            msg: format!(
+                "device_sig_rs2048 input file not found: {}",
+                input_dir.display()
+            ),
+        });
+    }
+
+    let ds_circuit = DeviceSigCircuit::new(config.clone(), Some(input_dir));
+    ds_circuit
+        .warm_witness_cache()
+        .map_err(|e| ZkProofError::ProofGenerationFailed {
+            msg: format!("device_sig_rs2048 witness pre-warm failed: {}", e),
+        })?;
+
     // --- device_sig_rs2048: prove with cached witness ---
     let ds_start = std::time::Instant::now();
     prove_circuit(
@@ -303,12 +319,11 @@ pub fn prove_fido(documents_path: String, input_dir: String) -> Result<ProofResu
     );
     let ds_prove_ms = ds_start.elapsed().as_millis() as u64;
 
-    let cc_proof_bytes = get_file_size(config.artifact_path(CertChainRsa4096::PROOF))?;
     let ds_proof_bytes = get_file_size(config.artifact_path(DeviceSigRsa2048::PROOF))?;
 
     Ok(ProofResult {
-        prove_ms: cc_prove_ms + ds_prove_ms,
-        proof_size_bytes: cc_proof_bytes + ds_proof_bytes,
+        prove_ms: ds_prove_ms,
+        proof_size_bytes: ds_proof_bytes,
     })
 }
 
@@ -316,21 +331,65 @@ pub fn prove_fido(documents_path: String, input_dir: String) -> Result<ProofResu
 // Verify Operation
 // ============================================================================
 
-/// Verify proofs for both cert_chain_rs4096 and device_sig_rs2048 circuits.
+/// Verify proofs for cert_chain_rs4096 circuit.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn verify_fido(documents_path: String) -> Result<bool, ZkProofError> {
+pub fn verify_cert_chain_rs4096(documents_path: String) -> Result<bool, ZkProofError> {
     let config = make_config(&documents_path);
 
     verify_circuit(
         config.artifact_path(CertChainRsa4096::PROOF),
         config.key_path(CertChainRsa4096::VERIFYING_KEY),
     );
+
+    Ok(true)
+}
+
+/// Verify proofs for device_sig_rs2048 circuit.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn verify_device_sig_rs2048(documents_path: String) -> Result<bool, ZkProofError> {
+    let config = make_config(&documents_path);
+
     verify_circuit(
         config.artifact_path(DeviceSigRsa2048::PROOF),
         config.key_path(DeviceSigRsa2048::VERIFYING_KEY),
     );
 
     Ok(true)
+}
+
+/// Verify proofs for cert_chain_rs4096 and device_sig_rs2048 circuits.
+#[cfg_attr(feature = "uniffi", uniffi::export)]
+pub fn link_verify(documents_path: String) -> Result<bool, ZkProofError> {
+    let config = make_config(&documents_path);
+
+    let cc_public_values = verify_circuit(
+        config.artifact_path(CertChainRsa4096::PROOF),
+        config.key_path(CertChainRsa4096::VERIFYING_KEY),
+    );
+    let ds_public_values = verify_circuit(
+        config.artifact_path(DeviceSigRsa2048::PROOF),
+        config.key_path(DeviceSigRsa2048::VERIFYING_KEY),
+    );
+
+    // pk_commit is at index 1 for cert-chain (after subject_dn_hash output)
+    // pk_commit is at index 0 for device-sig (first output)
+    let pk_commit_a = &cc_public_values[1];
+    let pk_commit_b = &ds_public_values[0];
+
+    use ff::PrimeField;
+    use subtle::ConstantTimeEq;
+    let commits_match: bool = pk_commit_a
+        .to_repr()
+        .as_ref()
+        .ct_eq(pk_commit_b.to_repr().as_ref())
+        .into();
+    if commits_match {
+        Ok(true)
+    } else {
+        Err(ZkProofError::VerificationFailed {
+            msg: "Link verification failed".to_string(),
+        })
+    }
 }
 
 // ============================================================================
@@ -345,7 +404,7 @@ pub fn verify_fido(documents_path: String) -> Result<bool, ZkProofError> {
 /// Each circuit is then processed in isolation (setup → save → drop PK → prove → verify) to
 /// avoid holding two large proving keys in memory simultaneously. Timings and sizes are combined.
 #[cfg_attr(feature = "uniffi", uniffi::export)]
-pub fn run_complete_benchmark_fido(
+pub fn run_complete_benchmark(
     documents_path: String,
 ) -> Result<BenchmarkResults, ZkProofError> {
     use ecdsa_spartan2::load_proving_key;
@@ -574,16 +633,14 @@ mod tests {
     ///
     /// Keys are generated inline during this test (setup is included).
     #[test]
-    fn test_prove_verify_fido() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_prove_verify() -> Result<(), Box<dyn std::error::Error>> {
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let documents_path = manifest.join("../ecdsa-spartan2");
 
-        let cc_r1cs_src = manifest.join(
-            "../circom/build/cert_chain_rs4096/cert_chain_rs4096_js/cert_chain_rs4096.r1cs",
-        );
-        let ds_r1cs_src = manifest.join(
-            "../circom/build/device_sig_rs2048/device_sig_rs2048_js/device_sig_rs2048.r1cs",
-        );
+        let cc_r1cs_src = manifest
+            .join("../circom/build/cert_chain_rs4096/cert_chain_rs4096_js/cert_chain_rs4096.r1cs");
+        let ds_r1cs_src = manifest
+            .join("../circom/build/device_sig_rs2048/device_sig_rs2048_js/device_sig_rs2048.r1cs");
         assert!(
             cc_r1cs_src.exists(),
             "cert_chain_rs4096 R1CS not found at {}. Run `yarn compile:cert_chain_rs4096` first.",
@@ -628,10 +685,17 @@ mod tests {
         std::fs::create_dir_all(documents_path.join("keys"))?;
 
         let doc_str = documents_path.to_string_lossy().to_string();
-        setup_keys_fido(doc_str.clone())?;
-        prove_fido(doc_str.clone())?;
-        let verify_result = verify_fido(doc_str)?;
-        assert!(verify_result);
+        setup_keys(doc_str.clone())?;
+        prove_cert_chain_rs4096(doc_str.clone())?;
+        let verify_result = verify_cert_chain_rs4096(doc_str.clone())?;
+        assert!(verify_result, "cert_chain_rs4096 verification failed");
+
+        prove_device_sig_rs2048(doc_str.clone())?;
+        let verify_result = verify_device_sig_rs2048(doc_str.clone())?;
+        assert!(verify_result, "device_sig_rs2048 verification failed");
+
+        let link_verify_result = link_verify(doc_str.clone())?;
+        assert!(link_verify_result, "link verification failed");
 
         std::fs::remove_file(cc_r1cs_dst)?;
         std::fs::remove_file(ds_r1cs_dst)?;
@@ -640,19 +704,17 @@ mod tests {
     }
 
     #[test]
-    fn test_complete_benchmark_fido_e2e() {
+    fn test_complete_benchmark_e2e() {
         use std::os::unix::fs::symlink;
 
         let tempdir = tempfile::tempdir().expect("Failed to create tempdir");
         let dir = tempdir.path().to_path_buf();
 
         let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let cc_r1cs_src = manifest.join(
-            "../circom/build/cert_chain_rs4096/cert_chain_rs4096_js/cert_chain_rs4096.r1cs",
-        );
-        let ds_r1cs_src = manifest.join(
-            "../circom/build/device_sig_rs2048/device_sig_rs2048_js/device_sig_rs2048.r1cs",
-        );
+        let cc_r1cs_src = manifest
+            .join("../circom/build/cert_chain_rs4096/cert_chain_rs4096_js/cert_chain_rs4096.r1cs");
+        let ds_r1cs_src = manifest
+            .join("../circom/build/device_sig_rs2048/device_sig_rs2048_js/device_sig_rs2048.r1cs");
         let cc_input_src = manifest.join("../circom/inputs/cert_chain_rs4096/input.json");
         let ds_input_src = manifest.join("../circom/inputs/device_sig_rs4096chain/input.json");
 
@@ -693,8 +755,7 @@ mod tests {
         let results = std::thread::Builder::new()
             .stack_size(256 * 1024 * 1024)
             .spawn(move || {
-                run_complete_benchmark_fido(dir_str)
-                    .expect("run_complete_benchmark_fido failed")
+                run_complete_benchmark(dir_str).expect("run_complete_benchmark failed")
             })
             .expect("Failed to spawn thread")
             .join()
@@ -703,8 +764,14 @@ mod tests {
         assert!(results.setup_ms > 0, "setup_ms should be > 0");
         assert!(results.prove_ms > 0, "prove_ms should be > 0");
         assert!(results.verify_ms > 0, "verify_ms should be > 0");
-        assert!(results.proving_key_bytes > 0, "proving_key_bytes should be > 0");
-        assert!(results.verifying_key_bytes > 0, "verifying_key_bytes should be > 0");
+        assert!(
+            results.proving_key_bytes > 0,
+            "proving_key_bytes should be > 0"
+        );
+        assert!(
+            results.verifying_key_bytes > 0,
+            "verifying_key_bytes should be > 0"
+        );
         assert!(results.proof_bytes > 0, "proof_bytes should be > 0");
         assert!(results.witness_bytes > 0, "witness_bytes should be > 0");
 
@@ -735,7 +802,7 @@ mod tests {
 
     #[ignore]
     #[test]
-    fn test_generate_input_fido_e2e() {
+    fn test_generate_cert_chain_rs4096_input_e2e() {
         use ecdsa_spartan2::circuits::types::Rs4096SignResponse;
 
         let response_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -756,7 +823,7 @@ mod tests {
             .to_string_lossy()
             .to_string();
 
-        let result = generate_input_fido(
+        let result = generate_cert_chain_rs4096_input(
             certb64,
             signed_response,
             tbs,
