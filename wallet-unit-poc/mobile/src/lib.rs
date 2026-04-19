@@ -249,11 +249,6 @@ pub fn prove_cert_chain_rs4096(documents_path: String) -> Result<ProofResult, Zk
 
     // Pre-warm witness caches on a clean heap before any large allocations.
     let cc_circuit = CertChainRs4096Circuit::new(config.clone(), Some(input_dir));
-    cc_circuit
-        .warm_witness_cache()
-        .map_err(|e| ZkProofError::ProofGenerationFailed {
-            msg: format!("cert_chain_rs4096 witness pre-warm failed: {}", e),
-        })?;
 
     // --- cert_chain_rs4096: load PK (mmap), prove with cached witness ---
     let cc_start = std::time::Instant::now();
@@ -302,11 +297,6 @@ pub fn prove_device_sig_rs2048(
     }
 
     let ds_circuit = DeviceSigCircuit::new(config.clone(), Some(input_dir));
-    ds_circuit
-        .warm_witness_cache()
-        .map_err(|e| ZkProofError::ProofGenerationFailed {
-            msg: format!("device_sig_rs2048 witness pre-warm failed: {}", e),
-        })?;
 
     // --- device_sig_rs2048: prove with cached witness ---
     let ds_start = std::time::Instant::now();
@@ -662,7 +652,7 @@ mod tests {
         }
 
         let cc_input_src = manifest.join("../circom/inputs/cert_chain_rs4096/input.json");
-        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs4096chain/input.json");
+        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs2048/input.json");
         assert!(
             cc_input_src.exists(),
             "cert_chain_rs4096 input not found at {}.",
@@ -716,7 +706,7 @@ mod tests {
         let ds_r1cs_src = manifest
             .join("../circom/build/device_sig_rs2048/device_sig_rs2048_js/device_sig_rs2048.r1cs");
         let cc_input_src = manifest.join("../circom/inputs/cert_chain_rs4096/input.json");
-        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs4096chain/input.json");
+        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs2048/input.json");
 
         assert!(
             cc_r1cs_src.exists(),
