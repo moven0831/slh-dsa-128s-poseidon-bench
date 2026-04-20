@@ -652,7 +652,7 @@ mod tests {
         }
 
         let cc_input_src = manifest.join("../circom/inputs/cert_chain_rs4096/input.json");
-        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs2048/input.json");
+        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs2048chain/input.json");
         assert!(
             cc_input_src.exists(),
             "cert_chain_rs4096 input not found at {}.",
@@ -706,7 +706,7 @@ mod tests {
         let ds_r1cs_src = manifest
             .join("../circom/build/device_sig_rs2048/device_sig_rs2048_js/device_sig_rs2048.r1cs");
         let cc_input_src = manifest.join("../circom/inputs/cert_chain_rs4096/input.json");
-        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs2048/input.json");
+        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs2048chain/input.json");
 
         assert!(
             cc_r1cs_src.exists(),
