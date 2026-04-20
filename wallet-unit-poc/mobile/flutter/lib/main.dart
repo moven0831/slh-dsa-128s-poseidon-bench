@@ -282,7 +282,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('zkID - SHA256RSA4096 Proof'),
+        title: const Text('zkID - Cert Chain & Device Sig Proof'),
         actions: [
           if (_results.isNotEmpty && !_isOperating)
             IconButton(
@@ -346,7 +346,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Run complete SHA256RSA4096 benchmark: setup, prove, and verify. Results include timing and artifact sizes.',
+                      'Run complete Cert Chain & Device Sig benchmark: setup, prove, and verify. Results include timing and artifact sizes.',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 12),
@@ -394,7 +394,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.setup,
-              label: 'Setup SHA256RSA4096 Keys',
+              label: 'Setup Cert Chain & Device Sig Keys',
               icon: Icons.key,
               color: Colors.blue,
             ),
@@ -406,7 +406,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.prove,
-              label: 'Prove SHA256RSA4096',
+              label: 'Prove Cert Chain & Device Sig',
               icon: Icons.calculate,
               color: Colors.green,
             ),
@@ -418,7 +418,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.verify,
-              label: 'Verify SHA256RSA4096',
+              label: 'Verify Cert Chain & Device Sig',
               icon: Icons.check_circle,
               color: Colors.teal,
             ),

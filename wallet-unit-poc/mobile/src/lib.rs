@@ -1,9 +1,3 @@
-// witnesscalc C++ library relies on mimalloc-compatible realloc() behaviour.
-// Without this, macOS's system allocator may move large reallocations and leave
-// stale interior pointers that cause SIGSEGV during witness generation.
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
 use ecdsa_spartan2::{
     generate_split_inputs, load_proof, prove_circuit, prove_circuit_with_pk, save_keys,
     serial_bytes_to_hex_trimmed, setup_circuit_keys, setup_circuit_keys_no_save, verify_circuit,
@@ -652,7 +646,7 @@ mod tests {
         }
 
         let cc_input_src = manifest.join("../circom/inputs/cert_chain_rs4096/input.json");
-        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs4096chain/input.json");
+        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs2048_chain_rs4096/input.json");
         assert!(
             cc_input_src.exists(),
             "cert_chain_rs4096 input not found at {}.",
@@ -706,7 +700,7 @@ mod tests {
         let ds_r1cs_src = manifest
             .join("../circom/build/device_sig_rs2048/device_sig_rs2048_js/device_sig_rs2048.r1cs");
         let cc_input_src = manifest.join("../circom/inputs/cert_chain_rs4096/input.json");
-        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs4096chain/input.json");
+        let ds_input_src = manifest.join("../circom/inputs/device_sig_rs2048_chain_rs4096/input.json");
 
         assert!(
             cc_r1cs_src.exists(),
