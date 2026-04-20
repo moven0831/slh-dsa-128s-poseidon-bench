@@ -4,14 +4,18 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:mopro_flutter_bindings/src/rust/frb_generated.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge.dart' show AnyhowException;
 import 'package:mopro_flutter_bindings/src/rust/third_party/openac_mobile_app.dart'
     show
         BenchmarkResults,
         ProofResult,
-        proveFido,
-        runCompleteBenchmarkFido,
-        setupKeysFido,
-        verifyFido;
+        setupKeys,
+        proveCertChainRs4096,
+        proveDeviceSigRs2048,
+        verifyCertChainRs4096,
+        verifyDeviceSigRs2048,
+        runCompleteBenchmark,
+        linkVerify;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,16 +27,20 @@ Future<void> main() async {
 /// Copy circuit R1CS files and input data from Flutter assets to documents directory.
 ///
 /// Assets are stored flat in the documents directory:
-///   Documents/sha256rsa4096.r1cs        (decompressed from .gz)
-///   Documents/rs256_input.json  (copied as-is)
+///   Documents/cert_chain_rs4096.r1cs        (decompressed from .gz)
+///   Documents/cert_chain_rs4096_input.json  
+///   Documents/device_sig_rs2048.r1cs        (decompressed from .gz)
+///   Documents/device_sig_rs2048_input.json
 Future<void> _copyAssetsToDocuments() async {
   try {
     final documentsDir = await getApplicationDocumentsDirectory();
     final basePath = documentsDir.path;
 
     final assets = {
-      'assets/circom/sha256rsa4096.r1cs.gz': 'sha256rsa4096.r1cs',
-      'assets/circom/rs256_input.json': 'rs256_input.json',
+      'assets/circom/cert_chain_rs4096.r1cs.gz': 'cert_chain_rs4096.r1cs',
+      'assets/circom/device_sig_rs2048.r1cs.gz': 'device_sig_rs2048.r1cs',
+      'assets/circom/cert_chain_rs4096_input.json': 'cert_chain_rs4096_input.json',
+      'assets/circom/device_sig_rs2048_input.json': 'device_sig_rs2048_input.json',
     };
 
     for (final entry in assets.entries) {
@@ -93,8 +101,11 @@ class TaskResult {
   final bool success;
   final String? error;
   final ProofResult? proofResult;
+  final ProofResult? deviceSigProofResult;
   final String? message;
   final bool? verifyResult;
+  final bool? deviceSigVerifyResult;
+  final bool? linkVerifyResult;
   final int? clientTimingMs;
 
   TaskResult({
@@ -102,8 +113,11 @@ class TaskResult {
     required this.success,
     this.error,
     this.proofResult,
+    this.deviceSigProofResult,
     this.message,
     this.verifyResult,
+    this.deviceSigVerifyResult,
+    this.linkVerifyResult,
     this.clientTimingMs,
   });
 
@@ -129,13 +143,6 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
     return directory.path;
   }
 
-  String? _getInputPath(ProofTaskType taskType) {
-    if (taskType == ProofTaskType.setup || taskType == ProofTaskType.prove) {
-      return 'rs256_input.json';
-    }
-    return null;
-  }
-
   Future<void> _runOperation(ProofTaskType taskType) async {
     setState(() {
       _isOperating = true;
@@ -144,15 +151,13 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
 
     try {
       final documentsPath = await _getDocumentsPath();
-      final inputPath = _getInputPath(taskType);
       TaskResult result;
 
       switch (taskType) {
         case ProofTaskType.setup:
           final startTime = DateTime.now();
-          final message = await setupKeysFido(
+          final message = await setupKeys(
             documentsPath: documentsPath,
-            inputPath: inputPath,
           );
           final elapsed = DateTime.now().difference(startTime).inMilliseconds;
           result = TaskResult(
@@ -164,20 +169,29 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
           break;
 
         case ProofTaskType.prove:
-          final proofResult = await proveFido(
+          final proofResult = await proveCertChainRs4096(
             documentsPath: documentsPath,
-            inputPath: inputPath,
+          );
+          final deviceSigProofResult = await proveDeviceSigRs2048(
+            documentsPath: documentsPath,
           );
           result = TaskResult(
             taskType: taskType,
             success: true,
             proofResult: proofResult,
+            deviceSigProofResult: deviceSigProofResult,
           );
           break;
 
         case ProofTaskType.verify:
           final startTime = DateTime.now();
-          final verifyResult = await verifyFido(
+          final verifyResult = await verifyCertChainRs4096(
+            documentsPath: documentsPath,
+          );
+          final deviceSigVerifyResult = await verifyDeviceSigRs2048(
+            documentsPath: documentsPath,
+          );
+          final linkVerifyResult = await linkVerify(
             documentsPath: documentsPath,
           );
           final elapsed = DateTime.now().difference(startTime).inMilliseconds;
@@ -185,6 +199,8 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             taskType: taskType,
             success: verifyResult,
             verifyResult: verifyResult,
+            deviceSigVerifyResult: deviceSigVerifyResult,
+            linkVerifyResult: linkVerifyResult,
             clientTimingMs: elapsed,
           );
           break;
@@ -196,15 +212,16 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
         _isOperating = false;
       });
     } catch (e) {
+      final errorMsg = e is AnyhowException ? e.message : e.toString();
       setState(() {
         final result = TaskResult(
           taskType: taskType,
           success: false,
-          error: e.toString(),
+          error: errorMsg,
         );
         _results[taskType.name] = result;
         _completedSteps[taskType.name] = false;
-        _error = Exception('${_taskTypeToDisplayName(taskType)} failed: $e');
+        _error = Exception('${_taskTypeToDisplayName(taskType)} failed: $errorMsg');
         _isOperating = false;
       });
     }
@@ -221,9 +238,8 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
       final documentsPath = await _getDocumentsPath();
       final startTime = DateTime.now();
 
-      final results = await runCompleteBenchmarkFido(
+      final results = await runCompleteBenchmark(
         documentsPath: documentsPath,
-        inputPath: null,
       );
 
       final clientTimingMs =
@@ -236,8 +252,9 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
 
       print('Benchmark completed in ${clientTimingMs}ms');
     } catch (e) {
+      final errorMsg = e is AnyhowException ? e.message : e.toString();
       setState(() {
-        _error = Exception('Benchmark failed: $e');
+        _error = Exception('Benchmark failed: $errorMsg');
         _isOperating = false;
       });
     }
@@ -265,7 +282,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('zkID - SHA256RSA4096 Proof'),
+        title: const Text('zkID - Cert Chain & Device Sig Proof'),
         actions: [
           if (_results.isNotEmpty && !_isOperating)
             IconButton(
@@ -329,7 +346,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Run complete SHA256RSA4096 benchmark: setup, prove, and verify. Results include timing and artifact sizes.',
+                      'Run complete Cert Chain & Device Sig benchmark: setup, prove, and verify. Results include timing and artifact sizes.',
                       style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                     const SizedBox(height: 12),
@@ -377,7 +394,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.setup,
-              label: 'Setup SHA256RSA4096 Keys',
+              label: 'Setup Cert Chain & Device Sig Keys',
               icon: Icons.key,
               color: Colors.blue,
             ),
@@ -389,7 +406,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.prove,
-              label: 'Prove SHA256RSA4096',
+              label: 'Prove Cert Chain & Device Sig',
               icon: Icons.calculate,
               color: Colors.green,
             ),
@@ -401,7 +418,7 @@ class _E2EProofWorkflowScreenState extends State<E2EProofWorkflowScreen> {
             const SizedBox(height: 12),
             _buildOperationButton(
               taskType: ProofTaskType.verify,
-              label: 'Verify SHA256RSA4096',
+              label: 'Verify Cert Chain & Device Sig',
               icon: Icons.check_circle,
               color: Colors.teal,
             ),

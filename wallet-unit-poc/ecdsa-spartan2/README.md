@@ -60,7 +60,7 @@ RUST_LOG=info cargo run --release --features cert_chain_rs4096 -- cert-chain ver
 # device-sig is always rs2048 (user keys are 2048-bit)
 RUST_LOG=info cargo run --release --features device_sig_rs2048 -- device-sig setup
 RUST_LOG=info cargo run --release --features device_sig_rs2048 -- device-sig prove \
-  --input ../circom/inputs/device_sig_rs4096chain/input.json
+  --input ../circom/inputs/device_sig_rs2048_chain_rs4096/input.json
 RUST_LOG=info cargo run --release --features device_sig_rs2048 -- device-sig verify
 
 RUST_LOG=info cargo run --release -- link-verify --cert-chain-4096
@@ -115,7 +115,7 @@ RUST_LOG=info cargo run --release --features device_sig_rs2048 -- device-sig set
 RUST_LOG=info cargo run --release --features cert_chain_rs4096 -- cert-chain prove \
   --cert-chain-4096 --input ../circom/inputs/cert_chain_rs4096/input.json
 RUST_LOG=info cargo run --release --features device_sig_rs2048 -- device-sig prove \
-  --input ../circom/inputs/device_sig_rs4096chain/input.json
+  --input ../circom/inputs/device_sig_rs2048_chain_rs4096/input.json
 
 RUST_LOG=info cargo run --release --features cert_chain_rs4096 -- cert-chain verify --cert-chain-4096
 RUST_LOG=info cargo run --release --features device_sig_rs2048 -- device-sig verify

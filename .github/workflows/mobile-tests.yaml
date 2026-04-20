@@ -2,7 +2,7 @@
 # NOTE: the mobile crate currently references deleted features (sha256rsa4096, Rs256FidoCircuit)
 # and will fail to compile. continue-on-error: true prevents blocking CI until the crate is
 # migrated to the split-circuit API in a follow-up plan (see wallet-unit-poc/docs/).
-name: mobile-tests
+name: mobile-tests-and-build
 
 on:
     push:
@@ -10,18 +10,38 @@ on:
             - main
         paths:
             - "wallet-unit-poc/mobile/**"
+            - "wallet-unit-poc/ecdsa-spartan2/**"
+            - "wallet-unit-poc/circom/circuits/**"
             - ".github/workflows/mobile-tests.yaml"
     pull_request:
         paths:
             - "wallet-unit-poc/mobile/**"
+            - "wallet-unit-poc/ecdsa-spartan2/**"
+            - "wallet-unit-poc/circom/circuits/**"
             - ".github/workflows/mobile-tests.yaml"
     workflow_dispatch:
 
 jobs:
     mobile-tests:
+        needs: compile-circuits
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v5
+
+            - name: Download circuit artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-cpp
+                  path: wallet-unit-poc/circom/build/cpp/
+
+            - name: Verify circuit artifacts
+              run: ls -la wallet-unit-poc/circom/build/cpp/
+
+            - name: Download R1CS artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-r1cs
+                  path: wallet-unit-poc/circom/build/
 
             - name: Install system dependencies
               run: |
@@ -47,7 +67,166 @@ jobs:
                       mobile-tests-cargo-
 
             - name: Run mobile API tests
-              continue-on-error: true
               run: |
                   cd wallet-unit-poc/mobile
-                  cargo test --release --no-default-features --lib
+                  cargo test --release --features mobile --lib
+
+    compile-circuits:
+        uses: ./.github/workflows/compile-circuits.yaml
+
+    build-ios:
+        needs: compile-circuits
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Download circuit artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-cpp
+                  path: wallet-unit-poc/circom/build/cpp/
+
+            - name: Verify circuit artifacts
+              run: ls -la wallet-unit-poc/circom/build/cpp/
+
+            - name: Set up Flutter
+              uses: subosito/flutter-action@v2
+              with:
+                  channel: stable
+
+            - name: Set up Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: aarch64-apple-ios-sim
+
+            - name: Cache Cargo registry and git
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                  key: ios-cargo-${{ hashFiles('wallet-unit-poc/mobile/**/Cargo.lock', 'wallet-unit-poc/mobile/**/Cargo.toml', 'wallet-unit-poc/ecdsa-spartan2/Cargo.lock') }}
+                  restore-keys: |
+                      ios-cargo-
+
+            - name: Cache GMP prebuild
+              uses: actions/cache@v4
+              with:
+                  path: wallet-unit-poc/mobile/.build-cache/
+                  key: ios-gmp-${{ hashFiles('wallet-unit-poc/mobile/scripts/prebuild-ios-gmp.sh') }}
+                  restore-keys: |
+                      ios-gmp-
+
+            - name: Cache CocoaPods
+              uses: actions/cache@v4
+              with:
+                  path: wallet-unit-poc/mobile/flutter/ios/Pods
+                  key: ios-pods-${{ hashFiles('wallet-unit-poc/mobile/flutter/ios/Podfile.lock') }}
+                  restore-keys: |
+                      ios-pods-
+
+            - name: Flutter pub get
+              run: cd wallet-unit-poc/mobile/flutter && flutter pub get
+
+            - name: Build iOS (simulator)
+              run: cd wallet-unit-poc/mobile/flutter && flutter build ios --simulator --no-codesign
+
+    build-ios-bindings:
+        needs: compile-circuits
+        runs-on: macos-latest
+
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+
+            - name: Download circuit artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-cpp
+                  path: wallet-unit-poc/circom/build/cpp/
+
+            - name: Verify circuit artifacts
+              run: ls -la wallet-unit-poc/circom/build/cpp/
+
+            - name: Install system dependencies
+              run: |
+                  brew install nasm
+
+            - name: Build iOS bindings
+              run: |
+                  cd wallet-unit-poc/mobile
+                  IOS_ARCHS=aarch64-apple-ios,aarch64-apple-ios-sim CONFIGURATION=release cargo run --bin ios
+
+            - name: Create ZIP of xcframework
+              run: |
+                  cd wallet-unit-poc/mobile/MoproiOSBindings
+                  zip -r MoproBindings.xcframework.zip MoproBindings.xcframework
+
+            - name: Upload release xcframework to GitHub Release
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: latest
+                  files: |
+                      wallet-unit-poc/mobile/MoproiOSBindings/MoproBindings.xcframework.zip
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Upload release swift to GitHub Release
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: latest
+                  files: |
+                      wallet-unit-poc/mobile/MoproiOSBindings/mopro.swift
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    build-android-bindings:
+        needs: compile-circuits
+        runs-on: ubuntu-latest
+
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+
+            - name: Download circuit artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: circuit-cpp
+                  path: wallet-unit-poc/circom/build/cpp/
+
+            - name: Verify circuit artifacts
+              run: ls -la wallet-unit-poc/circom/build/cpp/
+
+            - name: Install Linux dependencies
+              uses: awalsh128/cache-apt-pkgs-action@v1
+              with:
+                  packages: curl xz-utils build-essential cmake m4 nasm libstdc++6 protobuf-compiler
+                  version: 1.0
+
+            - name: Build Android bindings
+              run: |
+                  cd wallet-unit-poc/mobile
+                  ANDROID_ARCHS=aarch64-linux-android CONFIGURATION=release cargo run --bin android -vvv
+
+            - name: Create ZIP of xcframework
+              run: |
+                  cd wallet-unit-poc/mobile
+                  zip -r MoproAndroidBindings.zip MoproAndroidBindings
+
+            - name: Upload release assets to GitHub Release
+              if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: latest
+                  files: |
+                      wallet-unit-poc/mobile/MoproAndroidBindings.zip
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

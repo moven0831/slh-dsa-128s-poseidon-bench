@@ -115,7 +115,7 @@ fn run_generate_split_input(command_args: &[String]) -> ! {
                 rs4096 = true;
                 cert_chain_output = "../circom/inputs/cert_chain_rs4096/input.json".to_string();
                 device_sig_output =
-                    "../circom/inputs/device_sig_rs4096chain/input.json".to_string();
+                    "../circom/inputs/device_sig_rs2048_chain_rs4096/input.json".to_string();
                 issuer = "g3".to_string();
             }
             "--smt-server" => smt_server = Some(require_arg(command_args, &mut i, "--smt-server")),
