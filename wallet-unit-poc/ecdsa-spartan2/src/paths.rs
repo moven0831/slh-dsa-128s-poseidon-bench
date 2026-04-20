@@ -75,9 +75,14 @@ impl PathConfig {
     }
 
     /// Resolve the input JSON path for a circuit.
+    ///
+    /// MDOC has no size variants, so its input lives at `inputs/mdoc/default.json`.
     pub fn input_json(&self, circuit: &str) -> PathBuf {
         if self.is_mobile {
             self.base_dir.join(format!("{}_input.json", circuit))
+        } else if circuit == "mdoc" {
+            self.base_dir
+                .join("../circom/inputs/mdoc/default.json")
         } else {
             self.base_dir.join(format!(
                 "../circom/inputs/{}/{}/default.json",
@@ -171,6 +176,11 @@ pub mod keys {
     pub const SHOW_WITNESS: &str = "show_witness.bin";
     pub const SHOW_INSTANCE: &str = "show_instance.bin";
     pub const SHARED_BLINDS: &str = "shared_blinds.bin";
+    pub const MDOC_PROVING_KEY: &str = "mdoc_proving.key";
+    pub const MDOC_VERIFYING_KEY: &str = "mdoc_verifying.key";
+    pub const MDOC_PROOF: &str = "mdoc_proof.bin";
+    pub const MDOC_WITNESS: &str = "mdoc_witness.bin";
+    pub const MDOC_INSTANCE: &str = "mdoc_instance.bin";
 }
 
 #[cfg(test)]
@@ -240,6 +250,19 @@ mod tests {
         assert_eq!(
             config.key_path("prepare_proving.key"),
             PathBuf::from("/project/keys/4k_prepare_proving.key")
+        );
+    }
+
+    #[test]
+    fn test_mdoc_paths_skip_size_subdir() {
+        let config = PathConfig::new("/project", false);
+        assert_eq!(
+            config.input_json("mdoc"),
+            PathBuf::from("/project/../circom/inputs/mdoc/default.json")
+        );
+        assert_eq!(
+            config.r1cs_path("mdoc"),
+            PathBuf::from("/project/../circom/build/mdoc/mdoc_js/mdoc.r1cs")
         );
     }
 

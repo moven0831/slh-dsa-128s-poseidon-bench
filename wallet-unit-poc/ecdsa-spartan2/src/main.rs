@@ -21,13 +21,14 @@ use ecdsa_spartan2::{
     generate_shared_blinds, load_instance, load_proof, load_proving_key, load_shared_blinds,
     load_verifying_key, load_witness,
     paths::keys::{
+        MDOC_INSTANCE, MDOC_PROOF, MDOC_PROVING_KEY, MDOC_VERIFYING_KEY, MDOC_WITNESS,
         PREPARE_INSTANCE, PREPARE_PROOF, PREPARE_PROVING_KEY, PREPARE_VERIFYING_KEY,
         PREPARE_WITNESS, SHARED_BLINDS, SHOW_INSTANCE, SHOW_PROOF, SHOW_PROVING_KEY,
         SHOW_VERIFYING_KEY, SHOW_WITNESS,
     },
     prove_circuit, prove_circuit_with_pk, reblind, reblind_with_loaded_data, run_circuit,
     save_keys, setup_circuit_keys, setup_circuit_keys_no_save, verify_circuit,
-    verify_circuit_with_loaded_data, PathConfig, PrepareCircuit, ShowCircuit, E,
+    verify_circuit_with_loaded_data, MdocCircuit, PathConfig, PrepareCircuit, ShowCircuit, E,
 };
 use ff::Field;
 use std::{env::args, fs, path::PathBuf, process, time::Instant};
@@ -433,6 +434,174 @@ fn run_prove_pipeline(
     })
 }
 
+/// Prove + reblind + verify pipeline for the MDOC → Show flow.
+fn run_mdoc_prove_pipeline(
+    path_config: &PathConfig,
+    mdoc_input: Option<PathBuf>,
+) -> Result<BenchmarkResults, String> {
+    let size = path_config.circuit_size;
+
+    let show_mdoc_input = path_config
+        .base_dir
+        .join("../circom/inputs/show/mdoc.json");
+    let resolved_mdoc_input = mdoc_input.unwrap_or_else(|| path_config.input_json("mdoc"));
+    if !resolved_mdoc_input.exists() {
+        return Err(format!(
+            "MDOC inputs not found:\n  {}\nRun: yarn generate:inputs:mdoc",
+            resolved_mdoc_input.display()
+        ));
+    }
+    if !show_mdoc_input.exists() {
+        return Err(format!(
+            "Show inputs for mdoc flow not found:\n  {}\nRun: yarn generate:inputs:mdoc",
+            show_mdoc_input.display()
+        ));
+    }
+
+    let mdoc_pk_path = path_config.key_path(MDOC_PROVING_KEY);
+    let mdoc_vk_path = path_config.key_path(MDOC_VERIFYING_KEY);
+    let show_pk_path = path_config.key_path(SHOW_PROVING_KEY);
+    let show_vk_path = path_config.key_path(SHOW_VERIFYING_KEY);
+
+    if !mdoc_pk_path.exists() || !mdoc_vk_path.exists() {
+        return Err("MDOC keys not found. Run: cargo run --release -- mdoc setup".into());
+    }
+    if !show_pk_path.exists() || !show_vk_path.exists() {
+        return Err(format!(
+            "Show keys not found for size {size}.\n\
+             Run:  cargo run --release -- show setup --size {size}"
+        ));
+    }
+
+    let mdoc_pk = load_proving_key(&mdoc_pk_path)
+        .map_err(|e| format!("Failed to load mdoc proving key: {e}"))?;
+    let mdoc_vk = load_verifying_key(&mdoc_vk_path)
+        .map_err(|e| format!("Failed to load mdoc verifying key: {e}"))?;
+    let show_pk = load_proving_key(&show_pk_path)
+        .map_err(|e| format!("Failed to load show proving key: {e}"))?;
+    let show_vk = load_verifying_key(&show_vk_path)
+        .map_err(|e| format!("Failed to load show verifying key: {e}"))?;
+
+    info!("Generating shared blinds...");
+    let t0 = Instant::now();
+    generate_shared_blinds::<E>(path_config.artifact_path(SHARED_BLINDS), NUM_SHARED);
+    let generate_blinds_ms = t0.elapsed().as_millis();
+    println!("✓ Shared blinds generated: {} ms\n", generate_blinds_ms);
+
+    info!("Proving MDOC circuit...");
+    let t0 = Instant::now();
+    let mdoc_circuit = MdocCircuit::new(path_config.clone(), Some(resolved_mdoc_input.clone()));
+    prove_circuit_with_pk(
+        mdoc_circuit,
+        &mdoc_pk,
+        path_config.artifact_path(MDOC_INSTANCE),
+        path_config.artifact_path(MDOC_WITNESS),
+        path_config.artifact_path(MDOC_PROOF),
+    );
+    let prove_mdoc_ms = t0.elapsed().as_millis();
+    println!("✓ MDOC proof generated: {} ms\n", prove_mdoc_ms);
+
+    let mdoc_instance = load_instance(path_config.artifact_path(MDOC_INSTANCE))
+        .expect("load mdoc instance failed");
+    let mdoc_witness =
+        load_witness(path_config.artifact_path(MDOC_WITNESS)).expect("load mdoc witness failed");
+    let shared_blinds = load_shared_blinds::<E>(path_config.artifact_path(SHARED_BLINDS))
+        .expect("load shared_blinds failed");
+
+    info!("Reblinding MDOC proof...");
+    let t0 = Instant::now();
+    reblind_with_loaded_data(
+        &mdoc_pk,
+        mdoc_instance,
+        mdoc_witness,
+        &shared_blinds,
+        path_config.artifact_path(MDOC_INSTANCE),
+        path_config.artifact_path(MDOC_WITNESS),
+        path_config.artifact_path(MDOC_PROOF),
+    );
+    let reblind_mdoc_ms = t0.elapsed().as_millis();
+    println!("✓ MDOC proof reblinded: {} ms\n", reblind_mdoc_ms);
+
+    info!("Proving Show circuit (mdoc flow)...");
+    let t0 = Instant::now();
+    let show_circuit = ShowCircuit::new(path_config.clone(), Some(show_mdoc_input.clone()));
+    prove_circuit_with_pk(
+        show_circuit,
+        &show_pk,
+        path_config.artifact_path(SHOW_INSTANCE),
+        path_config.artifact_path(SHOW_WITNESS),
+        path_config.artifact_path(SHOW_PROOF),
+    );
+    let prove_show_ms = t0.elapsed().as_millis();
+    println!("✓ Show proof generated: {} ms\n", prove_show_ms);
+
+    let show_instance =
+        load_instance(path_config.artifact_path(SHOW_INSTANCE)).expect("load show instance failed");
+    let show_witness =
+        load_witness(path_config.artifact_path(SHOW_WITNESS)).expect("load show witness failed");
+
+    info!("Reblinding Show proof...");
+    let t0 = Instant::now();
+    reblind_with_loaded_data(
+        &show_pk,
+        show_instance,
+        show_witness,
+        &shared_blinds,
+        path_config.artifact_path(SHOW_INSTANCE),
+        path_config.artifact_path(SHOW_WITNESS),
+        path_config.artifact_path(SHOW_PROOF),
+    );
+    let reblind_show_ms = t0.elapsed().as_millis();
+    println!("✓ Show proof reblinded: {} ms\n", reblind_show_ms);
+
+    let mdoc_proof =
+        load_proof(path_config.artifact_path(MDOC_PROOF)).expect("load mdoc proof failed");
+    info!("Verifying MDOC proof...");
+    let t0 = Instant::now();
+    let _mdoc_public_values = verify_circuit_with_loaded_data(&mdoc_proof, &mdoc_vk);
+    let verify_mdoc_ms = t0.elapsed().as_millis();
+    println!("✓ MDOC proof verified: {} ms\n", verify_mdoc_ms);
+
+    let show_proof =
+        load_proof(path_config.artifact_path(SHOW_PROOF)).expect("load show proof failed");
+    info!("Verifying Show proof...");
+    let t0 = Instant::now();
+    let show_public_values = verify_circuit_with_loaded_data(&show_proof, &show_vk);
+    let verify_show_ms = t0.elapsed().as_millis();
+    println!("✓ Show proof verified: {} ms", verify_show_ms);
+    if !show_public_values.is_empty() {
+        let expression_result = show_public_values[0] == Field::ONE;
+        println!("  expressionResult: {}\n", expression_result);
+    }
+
+    Ok(BenchmarkResults {
+        size,
+        prepare_setup_ms: None,
+        show_setup_ms: None,
+        generate_blinds_ms,
+        prove_prepare_ms: prove_mdoc_ms,
+        reblind_prepare_ms: reblind_mdoc_ms,
+        prove_show_ms,
+        reblind_show_ms,
+        verify_prepare_ms: verify_mdoc_ms,
+        verify_show_ms,
+        prepare_proving_key_bytes: get_file_size(&mdoc_pk_path.to_string_lossy()),
+        prepare_verifying_key_bytes: get_file_size(&mdoc_vk_path.to_string_lossy()),
+        show_proving_key_bytes: get_file_size(&show_pk_path.to_string_lossy()),
+        show_verifying_key_bytes: get_file_size(&show_vk_path.to_string_lossy()),
+        prepare_proof_bytes: get_file_size(
+            &path_config.artifact_path(MDOC_PROOF).to_string_lossy(),
+        ),
+        show_proof_bytes: get_file_size(&path_config.artifact_path(SHOW_PROOF).to_string_lossy()),
+        prepare_witness_bytes: get_file_size(
+            &path_config.artifact_path(MDOC_WITNESS).to_string_lossy(),
+        ),
+        show_witness_bytes: get_file_size(
+            &path_config.artifact_path(SHOW_WITNESS).to_string_lossy(),
+        ),
+    })
+}
+
 /// Full 9-step benchmark: setup → prove → reblind → verify.
 fn run_complete_pipeline(path_config: PathConfig, input_path: Option<PathBuf>) -> BenchmarkResults {
     let size = path_config.circuit_size;
@@ -490,6 +659,7 @@ fn run_complete_pipeline(path_config: PathConfig, input_path: Option<PathBuf>) -
 enum CircuitKind {
     Prepare,
     Show,
+    Mdoc,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -544,6 +714,7 @@ fn main() {
     match command.circuit {
         CircuitKind::Prepare => execute_prepare(command.action, command.options),
         CircuitKind::Show => execute_show(command.action, command.options),
+        CircuitKind::Mdoc => execute_mdoc(command.action, command.options),
     }
 }
 
@@ -668,6 +839,66 @@ fn execute_show(action: CircuitAction, options: CommandOptions) {
     }
 }
 
+fn execute_mdoc(action: CircuitAction, options: CommandOptions) {
+    let path_config = options.path_config();
+
+    match action {
+        CircuitAction::Setup => {
+            info!(input = ?options.input, "Setting up keys for MDOC");
+            let circuit = MdocCircuit::new(path_config.clone(), options.input.clone());
+            setup_circuit_keys(
+                circuit,
+                path_config.key_path(MDOC_PROVING_KEY),
+                path_config.key_path(MDOC_VERIFYING_KEY),
+            );
+        }
+        CircuitAction::Run => {
+            let circuit = MdocCircuit::new(path_config, options.input.clone());
+            info!("Running MDOC circuit");
+            run_circuit(circuit);
+        }
+        CircuitAction::Prove => {
+            let circuit = MdocCircuit::new(path_config.clone(), options.input.clone());
+            info!("Proving MDOC circuit");
+            prove_circuit(
+                circuit,
+                path_config.key_path(MDOC_PROVING_KEY),
+                path_config.artifact_path(MDOC_INSTANCE),
+                path_config.artifact_path(MDOC_WITNESS),
+                path_config.artifact_path(MDOC_PROOF),
+            );
+        }
+        CircuitAction::Verify => {
+            info!("Verifying MDOC proof");
+            let _public_values = verify_circuit(
+                path_config.artifact_path(MDOC_PROOF),
+                path_config.key_path(MDOC_VERIFYING_KEY),
+            );
+        }
+        CircuitAction::Reblind => {
+            info!("Reblinding MDOC proof");
+            reblind(
+                path_config.key_path(MDOC_PROVING_KEY),
+                path_config.artifact_path(MDOC_INSTANCE),
+                path_config.artifact_path(MDOC_WITNESS),
+                path_config.artifact_path(MDOC_PROOF),
+                path_config.artifact_path(SHARED_BLINDS),
+            );
+        }
+        CircuitAction::GenerateSharedBlinds => {
+            info!("Generating shared blinds (mdoc)");
+            generate_shared_blinds::<E>(path_config.artifact_path(SHARED_BLINDS), NUM_SHARED);
+        }
+        CircuitAction::Benchmark => match run_mdoc_prove_pipeline(&path_config, options.input) {
+            Ok(results) => results.print_summary(),
+            Err(e) => {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        },
+    }
+}
+
 fn parse_command(args: &[String]) -> Result<ParsedCommand, String> {
     if args.is_empty() {
         return Err("No command provided".into());
@@ -680,6 +911,7 @@ fn parse_command(args: &[String]) -> Result<ParsedCommand, String> {
         }
         "prepare" => parse_circuit_command(CircuitKind::Prepare, &args[1..]),
         "show" => parse_circuit_command(CircuitKind::Show, &args[1..]),
+        "mdoc" => parse_circuit_command(CircuitKind::Mdoc, &args[1..]),
         "benchmark" => Ok(ParsedCommand {
             circuit: CircuitKind::Prepare,
             action: CircuitAction::Benchmark,
