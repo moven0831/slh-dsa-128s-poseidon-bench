@@ -1,5 +1,9 @@
 # Rust build artifacts
 /target/
+wallet-unit-poc/spartan2-wasm/target/
+wallet-unit-poc/spartan2-wasm/pkg/
+wallet-unit-poc/zkid-input-builder/target/
+wallet-unit-poc/zkid-input-builder/Cargo.lock
 
 # IDE files
 .vscode/
@@ -7,4 +11,7 @@
 
 # OS files
 .DS_Store
+
+wallet-unit-poc/web/node_modules/
+wallet-unit-poc/web/dist/
 
