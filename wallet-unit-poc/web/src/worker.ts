@@ -190,8 +190,9 @@ function clampThreads(): number {
   const override = parseThreadOverride();
   if (override != null) return override;
   const hc = (workerSelf.navigator as Navigator | undefined)?.hardwareConcurrency;
-  const raw = typeof hc === "number" && hc > 0 ? hc - 1 : 2;
-  return Math.max(2, Math.min(8, raw));
+  // Proving runs inside a dedicated Worker so the main thread is idle — use all cores.
+  const raw = typeof hc === "number" && hc > 0 ? hc : 2;
+  return Math.max(2, Math.min(16, raw));
 }
 
 function parseThreadOverride(): number | null {
@@ -355,12 +356,20 @@ async function runProve(inputs: ProveInput): Promise<void> {
     if (!deviceWgen)
       throw new Error("warmup did not cache witness-wasm for device_sig_rs2048");
 
+    // Both witness calculations are JS/WASM (not Rayon) — run concurrently.
     post({ step: "witness", status: "in_progress", kind: certKind });
-    const certWitnessStart = performance.now();
-    const certWtns = await calculateWitness(certKind, inputs.certJson, certWgen);
-    const certWitnessMs = performance.now() - certWitnessStart;
+    post({ step: "witness", status: "in_progress", kind: "device_sig_rs2048" });
+    const witnessStart = performance.now();
+    const [certWtns, deviceWtns] = await Promise.all([
+      calculateWitness(certKind, inputs.certJson, certWgen),
+      calculateWitness("device_sig_rs2048", inputs.deviceJson, deviceWgen),
+    ]);
+    const witnessElapsed = performance.now() - witnessStart;
+    const certWitnessMs = witnessElapsed;
+    const deviceWitnessMs = witnessElapsed;
     if (cancelled) return;
     post({ step: "witness", status: "done", kind: certKind });
+    post({ step: "witness", status: "done", kind: "device_sig_rs2048" });
 
     post({ step: "prove", status: "in_progress", kind: certKind, phase: "prep" });
     const certProveStart = performance.now();
@@ -370,21 +379,6 @@ async function runProve(inputs: ProveInput): Promise<void> {
     const certProveMs = performance.now() - certProveStart;
     post({ step: "prove", status: "done", kind: certKind, phase: "prove" });
     if (cancelled) return;
-
-    post({
-      step: "witness",
-      status: "in_progress",
-      kind: "device_sig_rs2048",
-    });
-    const deviceWitnessStart = performance.now();
-    const deviceWtns = await calculateWitness(
-      "device_sig_rs2048",
-      inputs.deviceJson,
-      deviceWgen,
-    );
-    const deviceWitnessMs = performance.now() - deviceWitnessStart;
-    if (cancelled) return;
-    post({ step: "witness", status: "done", kind: "device_sig_rs2048" });
 
     post({
       step: "prove",
