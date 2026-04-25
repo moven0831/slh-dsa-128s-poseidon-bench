@@ -8,6 +8,11 @@ use std::{fs::File, path::Path};
 use std::path::Path;
 
 #[cfg(feature = "native-witness")]
+use crate::circuits::mdoc_circuit::{
+    call_mdoc_witness, MDOC_MAX_CLAIMS, MDOC_MAX_IDENTIFIER_LEN, MDOC_MAX_PREIMAGE_LEN,
+    MDOC_MAX_VALUE_LEN,
+};
+#[cfg(feature = "native-witness")]
 use crate::circuits::prepare_circuit::call_jwt_witness;
 use crate::utils::parse_witness;
 use crate::{paths::PathConfig, Scalar, E};
@@ -17,7 +22,7 @@ use crate::{
         load_instance, load_proof, load_proving_key, load_shared_blinds, load_verifying_key,
         load_witness, save_instance, save_proof, save_shared_blinds, save_witness,
     },
-    utils::{hashmap_to_json_string, parse_jwt_inputs},
+    utils::{hashmap_to_json_string, mdoc_hashmap_to_json_string, parse_jwt_inputs, parse_mdoc_inputs},
 };
 
 use bellpepper_core::SynthesisError;
@@ -429,6 +434,50 @@ pub fn generate_prepare_witness(
 /// Stub for WASM builds - witness must be provided via with_witness() constructor.
 #[cfg(not(feature = "native-witness"))]
 pub fn generate_prepare_witness(
+    _config: &PathConfig,
+    _input_json_path: Option<&Path>,
+) -> Result<Vec<Scalar>, SynthesisError> {
+    Err(SynthesisError::AssignmentMissing)
+}
+
+/// Generate witness for the MDOC circuit (native builds only).
+#[cfg(feature = "native-witness")]
+pub fn generate_mdoc_witness(
+    config: &PathConfig,
+    input_json_path: Option<&Path>,
+) -> Result<Vec<Scalar>, SynthesisError> {
+    let json_path = input_json_path
+        .map(|p| config.resolve(p))
+        .unwrap_or_else(|| config.input_json("mdoc"));
+
+    info!("Loading mdoc inputs from {}", json_path.display());
+
+    let json_file = File::open(&json_path).map_err(|_| SynthesisError::AssignmentMissing)?;
+    let json_value: Value =
+        serde_json::from_reader(json_file).map_err(|_| SynthesisError::AssignmentMissing)?;
+
+    let inputs = parse_mdoc_inputs(&json_value)?;
+
+    info!("Generating mdoc witness using witnesscalc...");
+    let t0 = Instant::now();
+
+    let inputs_json = mdoc_hashmap_to_json_string(
+        &inputs,
+        MDOC_MAX_CLAIMS,
+        MDOC_MAX_PREIMAGE_LEN,
+        MDOC_MAX_IDENTIFIER_LEN,
+        MDOC_MAX_VALUE_LEN,
+    )?;
+
+    let witness_bytes = call_mdoc_witness(&inputs_json)?;
+
+    info!("mdoc witnesscalc time: {} ms", t0.elapsed().as_millis());
+
+    parse_witness(&witness_bytes)
+}
+
+#[cfg(not(feature = "native-witness"))]
+pub fn generate_mdoc_witness(
     _config: &PathConfig,
     _input_json_path: Option<&Path>,
 ) -> Result<Vec<Scalar>, SynthesisError> {

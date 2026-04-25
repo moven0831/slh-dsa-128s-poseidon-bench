@@ -1,0 +1,165 @@
+pragma circom 2.2.3;
+
+include "circomlib/circuits/comparators.circom";
+include "circomlib/circuits/bitify.circom";
+include "@zk-email/circuits/utils/array.circom";
+include "@zk-email/circuits/lib/sha.circom";
+include "../keyless_zk_proofs/arrays.circom";
+
+template MdocValueExtractor(maxPreimageLen, maxValueLen) {
+    signal input preimage[maxPreimageLen];
+    signal input preimageHashPoseidon;
+    signal input preimageLength;
+    signal input elementValueLabelPos;
+    signal input valueStart;
+    signal input valueEnd;
+    signal input valueType;
+    signal input isActive;
+
+    signal output normalizedValue;
+
+    // isActive is already constrained boolean by the caller.
+    // valueType is constrained to {0,1,2,3} by the formatSum gate below,
+    // which uses the IsEqual outputs we need anyway.
+
+    // CBOR text(12) "elementValue"
+    var LABEL_LEN = 13;
+    signal elementValueLabel[LABEL_LEN];
+    elementValueLabel[0]  <== 0x6c;
+    elementValueLabel[1]  <== 0x65;
+    elementValueLabel[2]  <== 0x6c;
+    elementValueLabel[3]  <== 0x65;
+    elementValueLabel[4]  <== 0x6d;
+    elementValueLabel[5]  <== 0x65;
+    elementValueLabel[6]  <== 0x6e;
+    elementValueLabel[7]  <== 0x74;
+    elementValueLabel[8]  <== 0x56;
+    elementValueLabel[9]  <== 0x61;
+    elementValueLabel[10] <== 0x6c;
+    elementValueLabel[11] <== 0x75;
+    elementValueLabel[12] <== 0x65;
+
+    CheckSubstrInclusionPoly(maxPreimageLen, LABEL_LEN)(
+        preimage,
+        preimageHashPoseidon,
+        elementValueLabel,
+        LABEL_LEN,
+        elementValueLabelPos,
+        isActive
+    );
+
+    // Offset between label and value: 13 (label itself) to 18 (label + up to
+    // 5 B of CBOR header for tagged dates).
+    signal offset <== valueStart - elementValueLabelPos;
+    var OFFSET_BITS = log2Ceil(maxPreimageLen + 1);
+
+    // Range-check offset so a valueStart < labelPos underflow can't wrap past LessEqThan.
+    component offsetBits = Num2Bits(OFFSET_BITS);
+    offsetBits.in <== offset;
+
+    component offsetGe13 = GreaterEqThan(OFFSET_BITS);
+    offsetGe13.in[0] <== offset;
+    offsetGe13.in[1] <== LABEL_LEN;
+    (1 - offsetGe13.out) * isActive === 0;
+
+    component offsetLe18 = LessEqThan(OFFSET_BITS);
+    offsetLe18.in[0] <== offset;
+    offsetLe18.in[1] <== LABEL_LEN + 5;
+    (1 - offsetLe18.out) * isActive === 0;
+
+    signal dataLen <== valueEnd - valueStart;
+
+    component dataLenBits = Num2Bits(OFFSET_BITS);
+    dataLenBits.in <== dataLen;
+
+    component dataLenLe = LessEqThan(OFFSET_BITS);
+    dataLenLe.in[0] <== dataLen;
+    dataLenLe.in[1] <== maxValueLen;
+    (1 - dataLenLe.out) * isActive === 0;
+
+    // valueEnd inside the preimage; otherwise the extractor reads SHA padding
+    // or wraps via VarShiftLeft.
+    component valueEndBits = Num2Bits(OFFSET_BITS);
+    valueEndBits.in <== valueEnd;
+
+    component valueEndLe = LessEqThan(OFFSET_BITS);
+    valueEndLe.in[0] <== valueEnd;
+    valueEndLe.in[1] <== preimageLength;
+    (1 - valueEndLe.out) * isActive === 0;
+
+    component formatEq[4];
+    for (var i = 0; i < 4; i++) {
+        formatEq[i] = IsEqual();
+        formatEq[i].in[0] <== valueType;
+        formatEq[i].in[1] <== i;
+    }
+
+    // Exactly one format must match when the claim is active. This also
+    // sound-checks valueType without LessThan's field-wrap pitfall.
+    signal formatSum <== formatEq[0].out + formatEq[1].out + formatEq[2].out + formatEq[3].out;
+    (1 - formatSum) * isActive === 0;
+
+    component shifter = VarShiftLeft(maxPreimageLen, maxValueLen);
+    shifter.in <== preimage;
+    shifter.shift <== valueStart;
+
+    signal value[maxValueLen];
+    for (var i = 0; i < maxValueLen; i++) {
+        value[i] <== shifter.out[i];
+    }
+
+    signal dateYear  <== (value[0] - 48) * 1000 + (value[1] - 48) * 100 + (value[2] - 48) * 10 + (value[3] - 48);
+    signal dateMonth <== (value[5] - 48) * 10 + (value[6] - 48);
+    signal dateDay   <== (value[8] - 48) * 10 + (value[9] - 48);
+    signal dateValue <== dateYear * 10000 + dateMonth * 100 + dateDay;
+
+    signal strAccum[maxValueLen + 1];
+    strAccum[maxValueLen] <== 0;
+
+    component strLenGt[maxValueLen];
+    signal strShifted[maxValueLen];
+    signal strBranch[maxValueLen];
+    for (var i = maxValueLen - 1; i >= 0; i--) {
+        strLenGt[i] = GreaterThan(log2Ceil(maxValueLen + 1));
+        strLenGt[i].in[0] <== dataLen;
+        strLenGt[i].in[1] <== i;
+
+        strShifted[i] <== strAccum[i + 1] * 256 + value[i];
+        strBranch[i] <== strLenGt[i].out * (strShifted[i] - strAccum[i + 1]);
+        strAccum[i] <== strAccum[i + 1] + strBranch[i];
+    }
+    signal strValue <== strAccum[0];
+
+    signal uintAccum[maxValueLen + 1];
+    uintAccum[0] <== 0;
+
+    component uintLenGt[maxValueLen];
+    for (var i = 0; i < maxValueLen; i++) {
+        uintLenGt[i] = GreaterThan(log2Ceil(maxValueLen + 1));
+        uintLenGt[i].in[0] <== dataLen;
+        uintLenGt[i].in[1] <== i;
+
+        uintAccum[i + 1] <== uintAccum[i] * 10 + (value[i] - 48) * uintLenGt[i].out;
+    }
+    signal uintValue <== uintAccum[maxValueLen];
+
+    // Inactive claims feed a dummy padded-zero input to Sha256Bytes.
+    signal input digestInputPadded[maxValueLen];
+    signal input digestInputPaddedLen;
+
+    signal digestSha[256] <== Sha256Bytes(maxValueLen)(digestInputPadded, digestInputPaddedLen);
+
+    component digestToField = Bits2Num(248);
+    for (var i = 0; i < 248; i++) {
+        digestToField.in[i] <== digestSha[i];
+    }
+    signal digestValue <== digestToField.out;
+
+    signal normDate   <== formatEq[0].out * dateValue;
+    signal normStr    <== formatEq[1].out * strValue;
+    signal normUint   <== formatEq[2].out * uintValue;
+    signal normDigest <== formatEq[3].out * digestValue;
+
+    signal rawValue <== normDate + normStr + normUint + normDigest;
+    normalizedValue <== rawValue * isActive;
+}

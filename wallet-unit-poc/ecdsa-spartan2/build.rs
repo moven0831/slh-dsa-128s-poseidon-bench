@@ -24,6 +24,13 @@ fn main() {
         }
     }
 
+    // MDOC has no size variants — gate on a single `has_circuit_mdoc` cfg.
+    println!("cargo::rustc-check-cfg=cfg(has_circuit_mdoc)");
+    if circuits_dir.join("mdoc.cpp").exists() {
+        println!("cargo:rustc-cfg=has_circuit_mdoc");
+        println!("cargo:warning=Found compiled circuit: mdoc.cpp — enabling mdoc support");
+    }
+
     // Only run witnesscalc build when the native-witness feature is enabled.
     // WASM builds use JavaScript witness generation instead.
     #[cfg(feature = "native-witness")]

@@ -34,5 +34,10 @@
     "file": "ecdsa/ecdsa",
     "template": "ECDSA",
     "params": []
+  },
+  "mdoc": {
+    "file": "mdoc",
+    "template": "MDOC",
+    "params": [1792, 256, 4, 32, 64, 64]
   }
 }

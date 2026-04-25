@@ -463,3 +463,133 @@ pub fn calculate_show_witness_indices(n_claims: usize) -> ShowWitnessLayout {
         claim_values_len: n_claims,
     }
 }
+
+/// Layout of the MDOC circuit's public outputs within the witness vector.
+///
+/// MDOC circuit outputs (in order, derived from `circom/circuits/mdoc.circom`):
+/// 1. `validUntilDate`
+/// 2. `normalizedClaimValues[maxClaims]`
+/// 3. `deviceKeyX`
+/// 4. `deviceKeyY`
+#[derive(Debug, Clone, Copy)]
+pub struct MdocOutputLayout {
+    pub valid_until_index: usize,
+    pub claim_values_start: usize,
+    pub claim_values_len: usize,
+    pub device_key_x_index: usize,
+    pub device_key_y_index: usize,
+}
+
+impl MdocOutputLayout {
+    pub fn claim_values_range(&self) -> Range<usize> {
+        self.claim_values_start..self.claim_values_start + self.claim_values_len
+    }
+
+    /// Total number of public outputs (`validUntilDate + claims + deviceKeyX + deviceKeyY`).
+    pub fn num_public(&self) -> usize {
+        1 + self.claim_values_len + 2
+    }
+}
+
+/// Calculate MDOC circuit witness layout from `maxClaims`.
+pub fn calculate_mdoc_output_indices(max_claims: usize) -> MdocOutputLayout {
+    let valid_until_index = 1;
+    let claim_values_start = valid_until_index + 1;
+    let device_key_x_index = claim_values_start + max_claims;
+    let device_key_y_index = device_key_x_index + 1;
+
+    MdocOutputLayout {
+        valid_until_index,
+        claim_values_start,
+        claim_values_len: max_claims,
+        device_key_x_index,
+        device_key_y_index,
+    }
+}
+
+/// Parse MDOC circuit inputs from JSON.
+///
+/// Matches `MDOC(maxCredLen, maxPreimageLen, maxClaims, maxIdentifierLen, maxValueLen, maxDeviceKeyPrefixLen)`
+/// in `circom/circuits/mdoc.circom`.
+pub fn parse_mdoc_inputs(
+    json_value: &Value,
+) -> Result<HashMap<String, Vec<BigInt>>, SynthesisError> {
+    let field_defs: &[(&str, FieldParser)] = &[
+        ("pubKeyX", FieldParser::BigIntScalar),
+        ("pubKeyY", FieldParser::BigIntScalar),
+        ("sig_r", FieldParser::BigIntScalar),
+        ("sig_s_inverse", FieldParser::BigIntScalar),
+        ("messageLength", FieldParser::BigIntScalar),
+        ("validUntilPrefixPos", FieldParser::BigIntScalar),
+        ("deviceKeyPrefixLen", FieldParser::BigIntScalar),
+        ("deviceKeyPrefixPos", FieldParser::BigIntScalar),
+        ("yPrefixLen", FieldParser::BigIntScalar),
+        ("message", FieldParser::BigIntArray),
+        ("deviceKeyPrefix", FieldParser::BigIntArray),
+        ("preimageLengths", FieldParser::BigIntArray),
+        ("identifierLengths", FieldParser::BigIntArray),
+        ("identifierPositions", FieldParser::BigIntArray),
+        ("digestIds", FieldParser::BigIntArray),
+        ("encodedDigestPositions", FieldParser::BigIntArray),
+        ("elementValueLabelPositions", FieldParser::BigIntArray),
+        ("valueStarts", FieldParser::BigIntArray),
+        ("valueEnds", FieldParser::BigIntArray),
+        ("valueTypes", FieldParser::BigIntArray),
+        ("claimFlags", FieldParser::BigIntArray),
+        ("digestInputsPaddedLen", FieldParser::BigIntArray),
+        ("preimages", FieldParser::BigInt2DArray),
+        ("identifierCbor", FieldParser::BigInt2DArray),
+        ("digestInputsPadded", FieldParser::BigInt2DArray),
+    ];
+
+    parse_inputs(json_value, field_defs)
+}
+
+/// Convert HashMap<String, Vec<BigInt>> to JSON string for witnesscalc_adapter (MDOC).
+/// Reconstructs the three MDOC 2D arrays using their declared dimensions.
+pub fn mdoc_hashmap_to_json_string(
+    inputs: &HashMap<String, Vec<BigInt>>,
+    max_claims: usize,
+    max_preimage_len: usize,
+    max_identifier_len: usize,
+    max_value_len: usize,
+) -> Result<String, SynthesisError> {
+    use serde_json::json;
+
+    let mut json_map = serde_json::Map::new();
+
+    let two_d_fields: HashMap<&str, (usize, usize)> = [
+        ("preimages", (max_claims, max_preimage_len)),
+        ("identifierCbor", (max_claims, max_identifier_len)),
+        ("digestInputsPadded", (max_claims, max_value_len)),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+
+    for (key, values) in inputs.iter() {
+        if let Some(&(rows, cols)) = two_d_fields.get(key.as_str()) {
+            let mut array_2d = Vec::with_capacity(rows);
+            for i in 0..rows {
+                let start = i * cols;
+                let end = start + cols;
+                if end <= values.len() {
+                    let row: Vec<String> = values[start..end]
+                        .iter()
+                        .map(|bigint| bigint.to_string())
+                        .collect();
+                    array_2d.push(json!(row));
+                } else {
+                    return Err(SynthesisError::Unsatisfiable);
+                }
+            }
+            json_map.insert(key.clone(), json!(array_2d));
+        } else {
+            let string_array: Vec<String> =
+                values.iter().map(|bigint| bigint.to_string()).collect();
+            json_map.insert(key.clone(), json!(string_array));
+        }
+    }
+
+    serde_json::to_string(&json_map).map_err(|_| SynthesisError::Unsatisfiable)
+}
