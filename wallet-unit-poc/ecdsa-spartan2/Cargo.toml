@@ -11,6 +11,11 @@ path = "src/lib.rs"
 name = "ecdsa-spartan2"
 path = "src/main.rs"
 
+[[bin]]
+name = "bench_show"
+path = "src/bin/bench_show.rs"
+required-features = ["native-witness"]
+
 [features]
 default = ["native-witness"]
 # Enable native witness calculation via witnesscalc_adapter (requires C++ toolchain).

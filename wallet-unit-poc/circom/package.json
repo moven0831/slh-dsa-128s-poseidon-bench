@@ -21,6 +21,8 @@
     "compile:all": "bash scripts/compile.sh all",
     "generate:inputs": "npx ts-node src/generate-inputs.ts",
     "generate:inputs:mdoc": "npx ts-node src/generate-mdoc-inputs.ts",
+    "bench:constraints": "npx ts-node scripts/benchmarks/run-constraints.ts",
+    "bench:report": "npx ts-node scripts/benchmarks/generate-report.ts",
     "setup": "npx circomkit setup jwt",
     "prove": "npx circomkit prove jwt",
     "verify": "npx circomkit verify jwt"

@@ -1,0 +1,19 @@
+{
+  "name": "OP_le_n10_m4",
+  "n_claims": 10,
+  "timings_ms": {
+    "setup": 42,
+    "witness_gen": 8,
+    "prove": 56,
+    "reblind": 23,
+    "verify": 10
+  },
+  "sizes_bytes": {
+    "proving_key": 3176602,
+    "verifying_key": 3176570,
+    "proof": 41479,
+    "reblinded_proof": 41479,
+    "witness": 524817
+  },
+  "expression_result": true
+}

@@ -1,0 +1,19 @@
+{
+  "name": "S2_n20_m1",
+  "n_claims": 20,
+  "timings_ms": {
+    "setup": 36,
+    "witness_gen": 7,
+    "prove": 54,
+    "reblind": 23,
+    "verify": 10
+  },
+  "sizes_bytes": {
+    "proving_key": 2696682,
+    "verifying_key": 2696650,
+    "proof": 41479,
+    "reblinded_proof": 41479,
+    "witness": 524817
+  },
+  "expression_result": true
+}

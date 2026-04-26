@@ -1,0 +1,282 @@
+[
+  {
+    "config": {
+      "name": "S1_m1_n10",
+      "sweep": "predicates_at_n10",
+      "nClaims": 10,
+      "maxPredicates": 1,
+      "maxLogicTokens": 1,
+      "expression": [
+        "P0"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 11157,
+    "constraints": 11174,
+    "privateInputs": 21,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 24769
+  },
+  {
+    "config": {
+      "name": "S1_m2_n10",
+      "sweep": "predicates_at_n10",
+      "nClaims": 10,
+      "maxPredicates": 2,
+      "maxLogicTokens": 3,
+      "expression": [
+        "P0",
+        "P1",
+        "AND"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 11814,
+    "constraints": 11862,
+    "privateInputs": 29,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 26101
+  },
+  {
+    "config": {
+      "name": "S1_m4_n10",
+      "sweep": "predicates_at_n10",
+      "nClaims": 10,
+      "maxPredicates": 4,
+      "maxLogicTokens": 7,
+      "expression": [
+        "P0",
+        "P1",
+        "AND",
+        "P2",
+        "AND",
+        "P3",
+        "AND"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 13716,
+    "constraints": 13850,
+    "privateInputs": 45,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 30109
+  },
+  {
+    "config": {
+      "name": "S1_m8_n10",
+      "sweep": "predicates_at_n10",
+      "nClaims": 10,
+      "maxPredicates": 8,
+      "maxLogicTokens": 15,
+      "expression": [
+        "P0",
+        "P1",
+        "AND",
+        "P2",
+        "AND",
+        "P3",
+        "AND",
+        "P4",
+        "AND",
+        "P5",
+        "AND",
+        "P6",
+        "AND",
+        "P7",
+        "AND"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 19824,
+    "constraints": 20226,
+    "privateInputs": 77,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 43501
+  },
+  {
+    "config": {
+      "name": "S2_n1_m1",
+      "sweep": "claims_at_m1",
+      "nClaims": 1,
+      "maxPredicates": 1,
+      "maxLogicTokens": 1,
+      "expression": [
+        "P0"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 11076,
+    "constraints": 11102,
+    "privateInputs": 12,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 24562
+  },
+  {
+    "config": {
+      "name": "S2_n5_m1",
+      "sweep": "claims_at_m1",
+      "nClaims": 5,
+      "maxPredicates": 1,
+      "maxLogicTokens": 1,
+      "expression": [
+        "P0"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 11112,
+    "constraints": 11134,
+    "privateInputs": 16,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 24654
+  },
+  {
+    "config": {
+      "name": "S2_n10_m1",
+      "sweep": "claims_at_m1",
+      "nClaims": 10,
+      "maxPredicates": 1,
+      "maxLogicTokens": 1,
+      "expression": [
+        "P0"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 11157,
+    "constraints": 11174,
+    "privateInputs": 21,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 24769
+  },
+  {
+    "config": {
+      "name": "S2_n20_m1",
+      "sweep": "claims_at_m1",
+      "nClaims": 20,
+      "maxPredicates": 1,
+      "maxLogicTokens": 1,
+      "expression": [
+        "P0"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 11247,
+    "constraints": 11254,
+    "privateInputs": 31,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 24999
+  },
+  {
+    "config": {
+      "name": "S2_n30_m1",
+      "sweep": "claims_at_m1",
+      "nClaims": 30,
+      "maxPredicates": 1,
+      "maxLogicTokens": 1,
+      "expression": [
+        "P0"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 11337,
+    "constraints": 11334,
+    "privateInputs": 41,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 25229
+  },
+  {
+    "config": {
+      "name": "OP_eq_n10_m4",
+      "sweep": "operator_mix",
+      "nClaims": 10,
+      "maxPredicates": 4,
+      "maxLogicTokens": 7,
+      "expression": [
+        "P0",
+        "P1",
+        "AND",
+        "P2",
+        "AND",
+        "P3",
+        "AND"
+      ],
+      "predicateOp": "eq",
+      "rhsIsRef": false
+    },
+    "wires": 13716,
+    "constraints": 13850,
+    "privateInputs": 45,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 30109
+  },
+  {
+    "config": {
+      "name": "OP_le_n10_m4",
+      "sweep": "operator_mix",
+      "nClaims": 10,
+      "maxPredicates": 4,
+      "maxLogicTokens": 7,
+      "expression": [
+        "P0",
+        "P1",
+        "AND",
+        "P2",
+        "AND",
+        "P3",
+        "AND"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": false
+    },
+    "wires": 13716,
+    "constraints": 13850,
+    "privateInputs": 45,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 30109
+  },
+  {
+    "config": {
+      "name": "REF_claim_n10_m4",
+      "sweep": "rhs_kind",
+      "nClaims": 10,
+      "maxPredicates": 4,
+      "maxLogicTokens": 7,
+      "expression": [
+        "P0",
+        "P1",
+        "AND",
+        "P2",
+        "AND",
+        "P3",
+        "AND"
+      ],
+      "predicateOp": "le",
+      "rhsIsRef": true
+    },
+    "wires": 13716,
+    "constraints": 13850,
+    "privateInputs": 45,
+    "publicInputs": 2,
+    "publicOutputs": 1,
+    "labels": 30109
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "name": "REF_claim_n10_m4",
+  "n_claims": 10,
+  "timings_ms": {
+    "setup": 41,
+    "witness_gen": 10,
+    "prove": 55,
+    "reblind": 23,
+    "verify": 12
+  },
+  "sizes_bytes": {
+    "proving_key": 3176602,
+    "verifying_key": 3176570,
+    "proof": 41479,
+    "reblinded_proof": 41479,
+    "witness": 524817
+  },
+  "expression_result": true
+}
