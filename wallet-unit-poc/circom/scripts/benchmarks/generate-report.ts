@@ -424,7 +424,7 @@ function renderTakeawaysSection(rows: Combined[]): string {
     const c2 = sweepM[sweepM.length - 1].constraints?.constraints;
     if (c0 && c1 && c2) {
       out.push(
-        `2. **Constraint growth is roughly linear in m,** but each predicate also adds two AND tokens to the postfix expression (because the canonical chain is left-deep), so the slope you see is really *per-predicate-plus-two-tokens*. To isolate per-token cost, fix m and add idempotent NOT/AND tokens.`
+        `2. **The m-slope bundles three effects, not just per-predicate cost.** The canonical expression is a left-deep AND chain (\`P0 P1 AND P2 AND ...\`), so going from m to m+1 adds *two* postfix tokens: one new predicate ref and one \`AND\` operator. The reported per-predicate slope therefore charges the prover for (1) one more comparison in \`EvalPredicates\`, (2) one more REF step, and (3) one more AND step in the postfix evaluator. To isolate per-token cost alone, hold m fixed and grow t with idempotent inserts (e.g. pairs of \`NOT NOT\`).`
       );
     }
   }
