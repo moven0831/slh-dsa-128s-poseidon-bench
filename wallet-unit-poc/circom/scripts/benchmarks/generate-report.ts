@@ -546,6 +546,17 @@ function main() {
   head.push("| `operator_mix`      | `predicateOp ∈ {==, ≤}`                                | `n = 10, m = 4, t = 7` |");
   head.push("| `rhs_kind`          | RHS kind (literal vs claim reference)                  | `n = 10, m = 4, t = 7` |");
   head.push("");
+  head.push("**Real-world examples per sweep**");
+  head.push("");
+  head.push("Plain-language examples of what each sweep models. `n` = number of claim slots in the credential (e.g. name, date of birth, nationality...), `m` = number of predicates checked (e.g. \"age ≥ 18\"), `t` = number of tokens in the boolean expression that combines them.");
+  head.push("");
+  head.push("| Sweep | What changes | Real-world example |");
+  head.push("| --- | --- | --- |");
+  head.push("| `predicates_at_n10` | More conditions checked at once on the same credential | A bar checks **1** condition (\"age ≥ 21\"); a rental site checks **2** (\"age ≥ 25 AND license valid\"); a job application checks **4** (\"age ≥ 18 AND citizen AND no criminal record AND degree verified\"); a financial onboarding checks **8** (KYC + AML + age + residency + income + sanctions + PEP + accredited investor). All on a credential with ~10 fields. |");
+  head.push("| `claims_at_m1`      | Same single check, but the credential carries more fields | A minimal token with **1** field (just date of birth) vs. a passport-like credential with **30** fields (name, DOB, nationality, document number, expiry, photo hash, ...). The presented check is still just one predicate (e.g. \"age ≥ 18\"); we measure the cost of carrying the extra unused fields. |");
+  head.push("| `operator_mix`      | The kind of comparison used in a predicate | \"nationality **==** 'ES'\" (equality) vs. \"age **≤** 65\" (range/inequality). Same workload shape, different operator. |");
+  head.push("| `rhs_kind`          | What the predicate compares against | Comparing a claim to a **literal constant** (\"age ≥ 18\") vs. comparing a claim to **another claim** (\"expiry_date ≥ today_field\", or \"billing_country == shipping_country\"). |");
+  head.push("");
 
   const sections = [
     head.join("\n"),
