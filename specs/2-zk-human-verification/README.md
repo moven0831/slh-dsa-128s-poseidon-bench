@@ -624,7 +624,7 @@ Other deployments MUST document their key-storage model and the resulting threat
 
 ## Verifier Implementations
 
-Reference verifier implementations are available across multiple deployment surfaces:
+Reference verifier implementations are available across multiple deployment surfaces. Several currently live in the [`zkmopro/zkID`](https://github.com/zkmopro/zkID) fork of this repository, where ongoing implementation work happens; this spec's canonical home is `privacy-ethereum/zkID`.
 
 - **Production HTTP / gRPC server**: [zkmopro/go-zkid-verifier](https://github.com/zkmopro/go-zkid-verifier) — Go-native verifier with a CGO FFI bridge to a Rust cryptographic backend. Exposes endpoints for challenge issuance (`POST /challenge`), linked proof verification (`POST /link-verify`), revocation root status (`GET /smt-root/status`), and issuer certificate cache state (`GET /issuer-cert/status`), with gRPC equivalents on a parallel port.
 - **Portable WASM verifier**: [zkmopro/zkID/wallet-unit-poc/spartan2-wasm](https://github.com/zkmopro/zkID/tree/main/wallet-unit-poc/spartan2-wasm) — Rust-to-WASM verifier suitable for browser and mobile contexts. Exposes `verify(proof_bytes, vk_bytes)` and `link_verify(cert_pubs, device_pubs)` for cross-proof `pk_commit` matching.
