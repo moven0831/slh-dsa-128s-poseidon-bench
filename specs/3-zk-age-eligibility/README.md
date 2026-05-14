@@ -543,7 +543,7 @@ Specific toolchains such as mobile native bindings, WASM verifier bindings, `mop
 
 - [1/COSS](https://github.com/privacy-ethereum/zkspecs/tree/main/specs/1)
 - [RFC 2119](https://www.ietf.org/rfc/rfc2119.txt)
-- [1/OPENAC-CORE](../1-openac-core/README.md)
+- [1/OPENAC](../1-openac/README.md)
 - [OpenAC: Open Design for Transparent and Lightweight Anonymous Credentials](https://github.com/privacy-ethereum/zkID)
 - [2/ZK-HUMAN-VERIFICATION](../2-zk-human-verification/README.md)
 - [TWDIW-integration](https://github.com/zkmopro/TWDIW-integration)
