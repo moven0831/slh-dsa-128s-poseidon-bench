@@ -50,13 +50,22 @@ cargo run --release -- benchmark --input ../circom/inputs/slh_dsa/1k/default.jso
 
 ## Witness fixture
 
-The Poseidon-SLH-DSA-128s scheme is **non-standard** — circomlib's BN254 Poseidon constants reused over secq256r1. No existing Rust/JS library implements signing under this scheme, so the witness fixture has to be produced by a custom signer.
+The Poseidon-SLH-DSA-128s scheme is **non-standard** — circomlib's BN254 Poseidon constants reused over secq256r1 (which in circom 2.2.3 is the secp256r1 base field). A JS signer is checked in upstream at [moven0831/slh-dsa-circuit/scripts/poseidon_sign.mjs](https://github.com/moven0831/slh-dsa-circuit/blob/main/scripts/poseidon_sign.mjs); the resulting fixture (50 KB) ships at `../circom/inputs/slh_dsa/1k/default.json`.
 
-A scaffolding signer is **not** yet checked in (it's a few hundred lines and the BN254→secq256r1 Poseidon parameter port is a separate task). `setup` runs without one; `prove`/`verify`/`benchmark` will fail until `../circom/inputs/slh_dsa/1k/default.json` is populated.
+To regenerate (deterministic, ~22 min on M3):
 
-## Memory
+```sh
+cd ../../../slh-dsa-circuit
+FORK_INPUTS=../slh-dsa-128s-poseidon-bench/wallet-unit-poc/circom/inputs/slh_dsa/1k \
+  bash scripts/regen_slh_dsa_input.sh
+```
 
-This circuit is ~3–4× larger than `ecdsa-spartan2`'s biggest variant (`jwt_8k`, 1.5 GB proving key, 7 s prove on M5/24 GB). On a 24 GB M3, expect:
-- Proving key: 3–6 GB
-- Peak RSS during setup: 8–16 GB
-- Run with other apps closed; if `setup` OOMs, document the peak and rerun on a 32 GB+ host.
+## Measured numbers (M3, 24 GB)
+
+| Phase  | Time      | Peak RSS | Artifact      | Size      |
+|--------|----------:|---------:|---------------|----------:|
+| Setup  | 23,143 ms | 10.45 GB | Proving key   | 2.37 GB   |
+| Prove  | 16,184 ms |  5.41 GB | Proof         | 208.8 KB  |
+| Verify |  9,522 ms |  3.11 GB | Verifying key | 2.37 GB   |
+
+Witness gen (witnesscalc) ~10 s; PK+VK size is large because this Spartan2 fork's `VerifierKey` bundles the full preprocessed R1CS shape — the on-wire proof is the small artifact. Closest comparable on the same stack: ecdsa-spartan2 `jwt_1k` (Prove 1.1 s, Verify 0.74 s, PK 257 MB). The ~10× gap tracks the R1CS-size ratio.
