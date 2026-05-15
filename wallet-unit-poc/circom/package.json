@@ -18,6 +18,7 @@
     "compile:show": "bash scripts/compile.sh show",
     "compile:mdoc": "bash scripts/compile.sh mdoc",
     "compile:ecdsa": "bash scripts/compile.sh ecdsa",
+    "compile:slh_dsa_1k": "bash scripts/compile.sh slh_dsa_128s_poseidon_1k",
     "compile:all": "bash scripts/compile.sh all",
     "generate:inputs": "npx ts-node src/generate-inputs.ts",
     "generate:inputs:mdoc": "npx ts-node src/generate-mdoc-inputs.ts",

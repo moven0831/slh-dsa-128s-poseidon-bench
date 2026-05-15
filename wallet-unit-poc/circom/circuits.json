@@ -39,5 +39,11 @@
     "file": "mdoc",
     "template": "MDOC",
     "params": [1792, 256, 4, 32, 64, 64]
+  },
+  "slh_dsa_128s_poseidon_1k": {
+    "file": "slh_dsa/main_poseidon",
+    "template": "MainPoseidon",
+    "params": [],
+    "pubs": ["pk", "msg"]
   }
 }
