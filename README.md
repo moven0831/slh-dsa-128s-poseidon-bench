@@ -43,20 +43,24 @@ These are now **real end-to-end** numbers (witness gen → setup → prove → v
 
 ### Row 3 — Goldilocks D4 folded ([`slh-dsa-neo`](https://github.com/moven0831/slh-dsa-neo))
 
-Nightstream `r1cs_f_prime` over the same Goldilocks Poseidon family, per-XMSS-layer D4 fold of `bench_ht_layer_gl.circom` (485,930 R1CS / 467,721 wires per step). See [`slh-dsa-neo/MEMO.md`](https://github.com/moven0831/slh-dsa-neo/blob/main/MEMO.md) for the full breakdown.
+Nightstream `r1cs_f_prime` over the same Goldilocks Poseidon family, per-XMSS-layer D4 fold of `bench_ht_layer_gl.circom` (**485,930 R1CS / 467,721 wires per step**; the bit-decomposition F' structure is `m×64+1 = 29,934,145` rows). See [`slh-dsa-neo/MEMO.md`](https://github.com/moven0831/slh-dsa-neo/blob/main/MEMO.md) for the full breakdown.
 
-| Path           | Prove (full chain) | Verify | Peak RSS | Proof              |
-| -------------- | -----------------: | -----: | -------: | ------------------ |
-| 1-step, c=2    |        2.07 s      | 0.62 s |  2.26 GB | uncompressed       |
-| 1-step, c=972 (extrap.) |       ~116 s |      – |       – | uncompressed       |
-| 7-step chain (extrap.)  |       ~815 s | ~20 s  | 10.5 GB per step | uncompressed |
-| 7-step + Spartan2-GL final SNARK | *blocked* | – | – | *Decider(Unsupported) at Nightstream 755c1595 — see MEMO.md* |
+One HT-layer fold step (preprocess + 1 append + finish + uncompressed verify), M3 / 24 GB:
+
+| HT-layer step (c=2)            | Preprocess | Prove+finish | Verify | Peak RSS | Witness            |
+| ------------------------------ | ---------: | -----------: | -----: | -------: | ------------------ |
+| all-zeros (synthetic)          |    86.7 s  |    116.6 s   | 19.8 s | 10.46 GB | synthetic          |
+| **real signature layer 0**     |    90.6 s  |  **139.2 s** | 28.9 s | ~10 GB   | **real, verify PASS** |
+| 7-step chain, c=972 (extrap.)  |     –      |    ~815 s    | ~20 s  | 10.5 GB/step | per-layer real (emit-layers) |
+| 7-step + Spartan2-GL final SNARK |   –      |   *blocked*  |   –    |    –     | *Decider(Unsupported) at Nightstream 755c1595* |
+
+The **real signature layer** row is the loop-closer: the Rust signer's `emit-layers` decomposes one signature into 7 `bench_ht_layer_gl` step witnesses (each validated to chain to `pk_root`); layer 0 was folded through `r1cs_f_prime` and the uncompressed accumulator **verifies**. So the folded path is confirmed on a real SLH-DSA signature, not just synthetic all-zeros. Per-step timing matches the synthetic run within run-to-run variance (≈±20% on the loaded box). The full 7-step *real* chain and the closing SNARK remain pending (the latter blocked upstream).
 
 Folded is ~50× slower per-step than Row-1 monolithic in prover wall-clock; per-step RSS is ~2× monolithic but doesn't compound across folds (the IVC property).
 
 ### Reading the three rows — what each comparison isolates
 
-The gap between Row 1 and Row 2 isolates the *stack* contribution — secq256r1 + Hyrax → Goldilocks + Hash-MLE at the same monolithic strategy. Note this conflates **field and PCS** (both change between the rows); it is *not* a pure-field comparison (see Row 2's attribution caveat). The gap between Row 2 and Row 3 isolates the *folding-scheme* contribution at the same field + Poseidon family. **Status**: Rows 1 and 2 are now fully measured end-to-end (real witnesses, verify passes). Row 3's full-chain and finisher rows remain extrapolated or blocked (`Decider(Unsupported)` at Nightstream 755c1595). Rows 1↔2 are a finished comparison; the Row 3 column is still a measurement plan.
+The gap between Row 1 and Row 2 isolates the *stack* contribution — secq256r1 + Hyrax → Goldilocks + Hash-MLE at the same monolithic strategy. Note this conflates **field and PCS** (both change between the rows); it is *not* a pure-field comparison (see Row 2's attribution caveat). The gap between Row 2 and Row 3 isolates the *folding-scheme* contribution at the same field + Poseidon family. **Status**: Rows 1 and 2 are fully measured end-to-end (real witnesses, verify passes). Row 3 is now confirmed on a **real signature layer** for one HT-layer fold step (verify passes); the full 7-step real chain at `c=972` is still extrapolated and the closing SNARK is blocked (`Decider(Unsupported)` at Nightstream 755c1595). Rows 1↔2 are a finished comparison; Row 3's single-step folding cost is real, its full-chain total is still a projection.
 
 Side Note:
 - load pk: 4281 ms
