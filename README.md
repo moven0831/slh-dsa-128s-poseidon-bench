@@ -33,7 +33,7 @@ Side notes: load pk 4,281 ms · prep_prove 20 ms.
 | Prove   |    *TBD*   |   *TBD*  | **Proof**     |  *TBD*   |
 | Verify  |    *TBD*   |   *TBD*  | R1CS          |  446 MB  |
 
-Setup is **~1.7× faster** and uses **~2.4× less RSS** than secq256r1 at the same scale. Goldilocks R1CS is **92.5%** of the secq256r1 size (3.69M vs 3.99M).
+Setup-phase only (no witness gen, no prove, no verify yet): **~1.7× faster** setup and **~2.4× less RSS** than secq256r1's setup at the same scale. Goldilocks R1CS is **92.5%** of the secq256r1 size (3.69M vs 3.99M). **Do not read this as a 1.7× end-to-end win** — Row 1's setup is also faster than its prove. Wait for the prove/verify rows below before drawing whole-pipeline conclusions.
 
 `Prove`/`verify` numbers are pending a Goldilocks-Poseidon-aware witness generator. The existing [`scripts/poseidon_sign.mjs`](https://github.com/moven0831/slh-dsa-circuit/blob/main/scripts/poseidon_sign.mjs) is secq256r1-only; either adapt it to Plonky2 v1.1.0 Goldilocks constants (~1 day) or wait for the Rust signer in [`slh-dsa-neo/crates/slh-poseidon-gl`](https://github.com/moven0831/slh-dsa-neo/tree/main/crates/slh-poseidon-gl) (T1.1.c, multi-day).
 
@@ -50,9 +50,9 @@ Nightstream `r1cs_f_prime` over the same Goldilocks Poseidon family, per-XMSS-la
 
 Folded is ~50× slower per-step than Row-1 monolithic in prover wall-clock; per-step RSS is ~2× monolithic but doesn't compound across folds (the IVC property).
 
-### Three-row summary — Goldilocks vs folding-overhead decomposition
+### Reading the three rows — what each comparison isolates
 
-The gap between Row 1 and Row 2 isolates the *field* contribution (secq256r1 → Goldilocks at the same monolithic strategy). The gap between Row 2 and Row 3 isolates the *folding-scheme* contribution at the same field. Both can be read independently — useful for choosing between the strategies.
+The gap between Row 1 and Row 2, once Row 2's prove/verify numbers land, will isolate the *field* contribution (secq256r1 → Goldilocks at the same monolithic strategy). The gap between Row 2 and Row 3 isolates the *folding-scheme* contribution at the same field. **Currently incomplete**: Row 2 has only setup measured; Row 3's full-chain and finisher rows are extrapolated or blocked. Treat this section as a measurement plan, not a finished comparison.
 
 Side Note:
 - load pk: 4281 ms
