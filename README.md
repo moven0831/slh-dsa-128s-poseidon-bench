@@ -24,18 +24,22 @@ Side notes: load pk 4,281 ms · prep_prove 20 ms.
 
 ### Row 2 — Goldilocks monolithic ([`slh-dsa-spartan2-gl`](wallet-unit-poc/slh-dsa-spartan2-gl))
 
-`main_poseidon_gl.circom` (Plonky2 v1.1.0 Goldilocks Poseidon t=12, 30 rounds, x⁷ S-box), **3,692,597 R1CS / 3,558,276 wires / 1 public output / 8,912 private inputs**.
+`main_poseidon_gl.circom` (Plonky2 v1.1.0 Goldilocks Poseidon t=12, 30 rounds, x⁷ S-box), **3,692,597 R1CS / 3,558,276 wires / 1 public output / 8,912 private inputs**. Witness produced by the Rust Goldilocks signer in [`slh-dsa-neo/crates/slh-poseidon-gl`](https://github.com/moven0831/slh-dsa-neo/tree/main/crates/slh-poseidon-gl) (T1.1.c) and confirmed valid against the circuit (`valid == 1`).
 
-| Phase   |       Time | Peak RSS |  Artifact     |     Size |
-| ------- | ---------: | -------: | ------------- | -------: |
-| Setup   |  12,956 ms |  4.43 GB | Proving key   |    *TBD* |
-| Witness |    *TBD*   |        – | Verifying key |    *TBD* |
-| Prove   |    *TBD*   |   *TBD*  | **Proof**     |  *TBD*   |
-| Verify  |    *TBD*   |   *TBD*  | R1CS          |  446 MB  |
+| Phase   |       Time | Peak RSS |  Artifact     |       Size |
+| ------- | ---------: | -------: | ------------- | ---------: |
+| Setup   |  17,604 ms |  4.47 GB | Proving key   |     571 MB |
+| Witness |   3,082 ms |  264 MB  | Verifying key |     571 MB |
+| Prove   |   6,181 ms |  4.47 GB | **Proof**     | **575,198 B (562 KiB)** |
+| Verify  |     273 ms |        – | R1CS          |     446 MB |
 
-Setup-phase only (no witness gen, no prove, no verify yet): **~1.7× faster** setup and **~2.4× less RSS** than secq256r1's setup at the same scale. Goldilocks R1CS is **92.5%** of the secq256r1 size (3.69M vs 3.99M). **Do not read this as a 1.7× end-to-end win** — Row 1's setup is also faster than its prove. Wait for the prove/verify rows below before drawing whole-pipeline conclusions.
+Side note: `prep_prove` 2 ms. Witness gen is the circom WASM calculator on the signer's input JSON.
 
-`Prove`/`verify` numbers are pending a Goldilocks-Poseidon-aware witness generator. The existing [`scripts/poseidon_sign.mjs`](https://github.com/moven0831/slh-dsa-circuit/blob/main/scripts/poseidon_sign.mjs) is secq256r1-only; either adapt it to Plonky2 v1.1.0 Goldilocks constants (~1 day) or wait for the Rust signer in [`slh-dsa-neo/crates/slh-poseidon-gl`](https://github.com/moven0831/slh-dsa-neo/tree/main/crates/slh-poseidon-gl) (T1.1.c, multi-day).
+These are now **real end-to-end** numbers (witness gen → setup → prove → verify, verify returns the public output `valid = 1`). Versus Row 1 (secq256r1 + Hyrax) at the same circuit scale: prove is **~2.6× faster** (6.2 s vs 16.2 s), verify is **~35× faster** (0.27 s vs 9.5 s), but the **proof is ~2.75× larger** (562 KiB vs 209 KiB) and the keys are far larger (571 MB vs 2.37 GB — Goldilocks keys are actually *smaller* here). Goldilocks R1CS is **92.5%** of the secq256r1 size (3.69M vs 3.99M).
+
+**Attribution caveat — this gap is field *and* PCS, not pure field.** Row 1 is secq256r1 + Hyrax-PC; Row 2 is Goldilocks + Hash-MLE PCS (Keccak Merkle). The large verify speedup and the larger proof are driven mostly by the *PCS* change (Hyrax does secq256r1 MSMs at verify and yields small proofs; Hash-MLE verifies by hashing and yields larger proofs), not the field alone. To isolate pure field you'd hold the PCS fixed across both rows — out of scope here.
+
+**Timing variance.** Measured on a loaded 24 GB M3; a second sample read setup 22.4 s / prove 8.1 s / verify 0.32 s / RSS 4.96 GB. Treat the timings as ±25%; the artifact sizes (proof, pk, vk) are deterministic. The earlier setup-only run measured 12.96 s — setup timing is the most load-sensitive cell.
 
 ### Row 3 — Goldilocks D4 folded ([`slh-dsa-neo`](https://github.com/moven0831/slh-dsa-neo))
 
@@ -52,7 +56,7 @@ Folded is ~50× slower per-step than Row-1 monolithic in prover wall-clock; per-
 
 ### Reading the three rows — what each comparison isolates
 
-The gap between Row 1 and Row 2, once Row 2's prove/verify numbers land, will isolate the *field* contribution (secq256r1 → Goldilocks at the same monolithic strategy). The gap between Row 2 and Row 3 isolates the *folding-scheme* contribution at the same field. **Currently incomplete**: Row 2 has only setup measured; Row 3's full-chain and finisher rows are extrapolated or blocked. Treat this section as a measurement plan, not a finished comparison.
+The gap between Row 1 and Row 2 isolates the *stack* contribution — secq256r1 + Hyrax → Goldilocks + Hash-MLE at the same monolithic strategy. Note this conflates **field and PCS** (both change between the rows); it is *not* a pure-field comparison (see Row 2's attribution caveat). The gap between Row 2 and Row 3 isolates the *folding-scheme* contribution at the same field + Poseidon family. **Status**: Rows 1 and 2 are now fully measured end-to-end (real witnesses, verify passes). Row 3's full-chain and finisher rows remain extrapolated or blocked (`Decider(Unsupported)` at Nightstream 755c1595). Rows 1↔2 are a finished comparison; the Row 3 column is still a measurement plan.
 
 Side Note:
 - load pk: 4281 ms
@@ -111,15 +115,34 @@ corepack enable && yarn install && bash scripts/vendor.sh
 bash scripts/build_main_poseidon_gl.sh
 ```
 
-Produces `build/main_poseidon_gl/main_poseidon_gl.r1cs` (446 MB).
+Produces `build/main_poseidon_gl/main_poseidon_gl.r1cs` (446 MB) plus the WASM
+witness calculator under `build/main_poseidon_gl/main_poseidon_gl_js/`.
 
-Build + run the Goldilocks Spartan2-GL prover:
+Generate a real witness with the Rust Goldilocks signer (in the
+[`slh-dsa-neo`](https://github.com/moven0831/slh-dsa-neo) repo), then run the
+circom WASM calculator on its input JSON:
 
 ```sh
-cd ../slh-dsa-128s-poseidon-bench/wallet-unit-poc/slh-dsa-spartan2-gl
+cd ../slh-dsa-neo
+cargo run --release -p slh-poseidon-gl --features cli -- \
+  emit-monolithic --seed 0 --out /tmp/main_poseidon_gl_input.json
+cd ../slh-dsa-circuit/build/main_poseidon_gl/main_poseidon_gl_js
+NODE_OPTIONS="--max-old-space-size=12288" \
+  node generate_witness.js main_poseidon_gl.wasm \
+    /tmp/main_poseidon_gl_input.json /tmp/main_poseidon_gl.wtns
+# generate_witness.js exits 0 iff the signature verifies (the circuit's
+# `xmss_root === pk_root` asserts fire on a bad signature).
+```
+
+Build + run the Goldilocks Spartan2-GL prover end-to-end:
+
+```sh
+cd ../../../../slh-dsa-128s-poseidon-bench/wallet-unit-poc/slh-dsa-spartan2-gl
 cargo build --release
-# Setup needs only the .r1cs:
-/usr/bin/time -l ./target/release/slh-dsa-spartan2-gl setup --r1cs ../../../slh-dsa-circuit/build/main_poseidon_gl/main_poseidon_gl.r1cs
-# Prove/verify needs a Goldilocks-Poseidon .wtns (see witness gap above):
-# /usr/bin/time -l ./target/release/slh-dsa-spartan2-gl benchmark --r1cs … --wtns …
+R1CS=../../../slh-dsa-circuit/build/main_poseidon_gl/main_poseidon_gl.r1cs
+# setup only (no witness):
+/usr/bin/time -l ./target/release/slh-dsa-spartan2-gl setup --r1cs "$R1CS"
+# full pipeline (setup + prove + verify + sizes), needs the .wtns:
+RUST_LOG=warn /usr/bin/time -l \
+  ./target/release/slh-dsa-spartan2-gl benchmark --r1cs "$R1CS" --wtns /tmp/main_poseidon_gl.wtns
 ```
