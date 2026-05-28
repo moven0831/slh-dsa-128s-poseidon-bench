@@ -206,6 +206,19 @@ impl SpartanCircuit<E> for Circom2SpartanCircuit {
                 |lc| add_row_to_lc(lc, &c_dec[i], &wires),
             );
         }
+
+        // Expose the Circom public outputs (wires[1..=n_pub_out]) as public
+        // IO, in the same order `public_values()` reports them. Spartan2's
+        // SpartanCircuit contract requires every public value to be
+        // `inputize()`d here (see the `CubicCircuit` example in
+        // spartan2/src/spartan.rs, which returns `public_values() = [15]` and
+        // calls `y.inputize(...)`). Without this, the circuit declares public
+        // values that are never wired into the constraint system, so the
+        // prover's transcript and the verifier's public-IO sum-check disagree
+        // → `InvalidSumcheckProof` at verify time (prove still succeeds).
+        for i in 0..self.inner.n_pub_out {
+            wires[1 + i].inputize(cs.namespace(|| format!("io{}", i)))?;
+        }
         Ok(())
     }
 }
