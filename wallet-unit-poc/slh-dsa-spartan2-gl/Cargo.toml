@@ -1,0 +1,43 @@
+[package]
+name = "slh-dsa-spartan2-gl"
+version = "0.0.1"
+edition = "2021"
+description = "Monolithic Spartan2-GL benchmark on the Goldilocks SLH-DSA-128s verifier (Track 2 baseline)."
+
+[lib]
+name = "slh_dsa_spartan2_gl"
+path = "src/lib.rs"
+
+[[bin]]
+name = "slh-dsa-spartan2-gl"
+path = "src/main.rs"
+
+[dependencies]
+# Nightstream's vendored Spartan2, pin matches slh-dsa-neo's workspace.
+spartan2 = { git = "https://github.com/LFDT-Nightstream/Nightstream", rev = "755c1595f3b34b5c2bc9eaa50417cdf9dfb871ec", default-features = false, features = ["p3_backend"] }
+
+# Circom .r1cs / .wtns parser known to work on Goldilocks (used by rfp_smoke
+# in slh-dsa-neo). Path-dep against the sibling repo; switch to git-dep if
+# the layout changes.
+neo-bridge = { path = "../../../slh-dsa-neo/crates/neo-bridge" }
+neo-math   = { git = "https://github.com/LFDT-Nightstream/Nightstream", rev = "755c1595f3b34b5c2bc9eaa50417cdf9dfb871ec" }
+neo-ccs    = { git = "https://github.com/LFDT-Nightstream/Nightstream", rev = "755c1595f3b34b5c2bc9eaa50417cdf9dfb871ec" }
+
+# bellpepper for the SpartanCircuit synthesize path.
+bellpepper-core = "0.4.0"
+ff = { version = "0.13.0", features = ["derive"] }
+
+# Field types used by neo-bridge witnesses.
+p3-field = { version = "=0.5.1", default-features = false }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+bincode = "1.3.3"
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+debug = true
+lto = "thin"
+codegen-units = 1
