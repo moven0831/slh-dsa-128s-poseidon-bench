@@ -7,6 +7,16 @@ End-to-end prove + verify numbers for the [SLH-DSA-128s Poseidon-hash verifier](
 
 This fork adds both bench crates and vendors the circuits into `wallet-unit-poc/circom/circuits/slh_dsa/`. Rest is upstream [`privacy-ethereum/zkID`](https://github.com/privacy-ethereum/zkID)@`3d325e3`.
 
+> **TL;DR — the win is the PCS swap, not folding.** Across three rows we compare the *same*
+> SLH-DSA-128s Poseidon verifier: Row 1 (secq256r1 + Hyrax, the existing baseline) → **Row 2
+> (Goldilocks + Hash-MLE PCS): 6.18 s prove / 0.27 s verify — 2.6× / 35× faster** → Row 3 (D4
+> folding) which is **~50× slower** and memory-bound. The takeaway: swapping the polynomial
+> commitment scheme (Hyrax → Hash-MLE) in the *monolithic* prover is the feasibility win;
+> **folding is the wrong tool at this scale** (see [`slh-dsa-neo`](https://github.com/moven0831/slh-dsa-neo)
+> for the full folding write-up). Sibling repos: [`slh-dsa-neo`](https://github.com/moven0831/slh-dsa-neo)
+> (folding prover) and [`slh-dsa-circuit`](https://github.com/moven0831/slh-dsa-circuit) (Circom R1CS
+> benchmark + folding research).
+
 ## Results (M3 / 24 GB)
 
 ### Row 1 — secq256r1 monolithic ([`slh-dsa-spartan2`](wallet-unit-poc/slh-dsa-spartan2))
@@ -37,11 +47,18 @@ Side note: `prep_prove` 2 ms. Witness gen is the circom WASM calculator on the s
 
 These are now **real end-to-end** numbers (witness gen → setup → prove → verify, verify returns the public output `valid = 1`). Versus Row 1 (secq256r1 + Hyrax) at the same circuit scale: prove is **~2.6× faster** (6.2 s vs 16.2 s), verify is **~35× faster** (0.27 s vs 9.5 s), but the **proof is ~2.75× larger** (562 KiB vs 209 KiB) and the keys are far larger (571 MB vs 2.37 GB — Goldilocks keys are actually *smaller* here). Goldilocks R1CS is **92.5%** of the secq256r1 size (3.69M vs 3.99M).
 
-**Attribution caveat — this gap is field *and* PCS, not pure field.** Row 1 is secq256r1 + Hyrax-PC; Row 2 is Goldilocks + Hash-MLE PCS (Keccak Merkle). The large verify speedup and the larger proof are driven mostly by the *PCS* change (Hyrax does secq256r1 MSMs at verify and yields small proofs; Hash-MLE verifies by hashing and yields larger proofs), not the field alone. To isolate pure field you'd hold the PCS fixed across both rows — out of scope here.
+**Attribution caveat — this gap is field *and* PCS, not pure field.** Row 1 is secq256r1 + Hyrax-PC; Row 2 is Goldilocks + Hash-MLE PCS (Poseidon2 Merkle). The large verify speedup and the larger proof are driven mostly by the *PCS* change (Hyrax does secq256r1 MSMs at verify and yields small proofs; Hash-MLE verifies by hashing and yields larger proofs), not the field alone. To isolate pure field you'd hold the PCS fixed across both rows — out of scope here.
+
+**What the Hash-MLE PCS actually is.** `GoldilocksP3MerkleMleEngine` (`slh-dsa-spartan2-gl/src/lib.rs`, Nightstream rev `755c1595`) = Goldilocks field + **Poseidon2** Fiat-Shamir transcript + **Poseidon2** Merkle hashing (Plonky3 backend) + PCS `HashMlePcsP3`. The PCS is a **transparent hash-based multilinear commitment with a FRI-style fold-and-sample evaluation argument, and no error-correcting code**: commit = a Poseidon2 Merkle root over the `2^m` MLE evaluations; open at point `r` = fold one variable per round (`next = a + rᵢ·(b − a)`), Merkle-commit each fold layer, and prove each fold honest with **K = 48 transcript-sampled Merkle openings per round**. So it is **neither Brakedown/Ligero nor Basefold/FRI** (both presuppose a code); the ~562 KiB proof is ~22 rounds × 48 samples × 3 Merkle paths, not a codeword. *Caveat:* this is a **bespoke, non-standard construction** ("LeakReduced" reveals O(m) dense fold values; soundness rests on K=48, validated only by in-tree red-team tests) — not a published, peer-reviewed PCS, so treat its soundness as load-bearing and unreviewed before relying on it.
 
 **Timing variance.** Measured on a loaded 24 GB M3; a second sample read setup 22.4 s / prove 8.1 s / verify 0.32 s / RSS 4.96 GB. Treat the timings as ±25%; the artifact sizes (proof, pk, vk) are deterministic. The earlier setup-only run measured 12.96 s — setup timing is the most load-sensitive cell.
 
 ### Row 3 — Goldilocks D4 folded ([`slh-dsa-neo`](https://github.com/moven0831/slh-dsa-neo))
+
+> **Status: partial — not a finished measurement.** One HT-layer fold step is real-witness-measured
+> and verifies; the **full 7-step chain total is a per-step projection** (multi-step OOMs on 24 GB),
+> and the **closing SNARK is unmeasured** (`Decider(Unsupported)` upstream). Net result: folding is
+> **~50× slower** than the Row-1 monolith — the wrong tool at this scale.
 
 Nightstream `r1cs_f_prime` over the same Goldilocks Poseidon family, per-XMSS-layer D4 fold of `bench_ht_layer_gl.circom` (**485,930 R1CS / 467,721 wires per step**; the bit-decomposition F' structure is `m×64+1 = 29,934,145` rows). See [`slh-dsa-neo/MEMO.md`](https://github.com/moven0831/slh-dsa-neo/blob/main/MEMO.md) for the full breakdown.
 
