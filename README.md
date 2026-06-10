@@ -3,7 +3,7 @@
 End-to-end prove + verify numbers for the [SLH-DSA-128s Poseidon-hash verifier](https://github.com/moven0831/slh-dsa-circuit/blob/main/circuits/main_poseidon.circom) on two Spartan2 stacks:
 
 1. **secq256r1 / Hyrax-PC** ([`wallet-unit-poc/slh-dsa-spartan2`](wallet-unit-poc/slh-dsa-spartan2)) — the existing OpenAC stack, `T256HyraxEngine` over secq256r1.
-2. **Goldilocks / Hash-MLE PCS** ([`wallet-unit-poc/slh-dsa-spartan2-gl`](wallet-unit-poc/slh-dsa-spartan2-gl)) — `R1CSSNARK<GoldilocksP3MerkleMleEngine>` over Plonky2 Goldilocks Poseidon. Track 2 baseline for the folding experiment in [`slh-dsa-neo`](https://github.com/moven0831/slh-dsa-neo).
+2. **Goldilocks / Hash-MLE PCS** ([`wallet-unit-poc/slh-dsa-spartan2-gl`](wallet-unit-poc/slh-dsa-spartan2-gl)) — `R1CSSNARK<GoldilocksP3MerkleMleEngine>` over Plonky2 Goldilocks Poseidon. The monolithic baseline the folding experiment in [`slh-dsa-neo`](https://github.com/moven0831/slh-dsa-neo) is compared against.
 
 This fork adds both bench crates and vendors the circuits into `wallet-unit-poc/circom/circuits/slh_dsa/`. Rest is upstream [`privacy-ethereum/zkID`](https://github.com/privacy-ethereum/zkID)@`3d325e3`.
 
@@ -34,7 +34,7 @@ Side notes: load pk 4,281 ms · prep_prove 20 ms.
 
 ### Row 2 — Goldilocks monolithic ([`slh-dsa-spartan2-gl`](wallet-unit-poc/slh-dsa-spartan2-gl))
 
-`main_poseidon_gl.circom` (Plonky2 v1.1.0 Goldilocks Poseidon t=12, 30 rounds, x⁷ S-box), **3,692,597 R1CS / 3,558,276 wires / 1 public output / 8,912 private inputs**. Witness produced by the Rust Goldilocks signer in [`slh-dsa-neo/crates/slh-poseidon-gl`](https://github.com/moven0831/slh-dsa-neo/tree/main/crates/slh-poseidon-gl) (T1.1.c) and confirmed valid against the circuit (`valid == 1`).
+`main_poseidon_gl.circom` (Plonky2 v1.1.0 Goldilocks Poseidon t=12, 30 rounds, x⁷ S-box), **3,692,597 R1CS / 3,558,276 wires / 1 public output / 8,912 private inputs**. Witness produced by the Rust Goldilocks signer in [`slh-dsa-neo/crates/slh-poseidon-gl`](https://github.com/moven0831/slh-dsa-neo/tree/main/crates/slh-poseidon-gl) and confirmed valid against the circuit (`valid == 1`).
 
 | Phase   |       Time | Peak RSS |  Artifact     |       Size |
 | ------- | ---------: | -------: | ------------- | ---------: |
